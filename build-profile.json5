@@ -1,0 +1,59 @@
+{
+  app: {
+    signingConfigs: [
+      {
+        name: 'default',
+        type: 'HarmonyOS',
+        // Placeholders only. hvigorfile.ts replaces this whole entry at build
+        // time from external-signing-config.json, which is git-ignored because
+        // it carries the machine-local keystore paths and passwords.
+        material: {
+          certpath: '',
+          keyAlias: '',
+          keyPassword: '',
+          profile: '',
+          signAlg: 'SHA256withECDSA',
+          storeFile: '',
+          storePassword: '',
+        },
+      },
+    ],
+    products: [
+      {
+        name: 'default',
+        signingConfig: 'default',
+        targetSdkVersion: '6.0.0(20)',
+        compatibleSdkVersion: '6.0.0(20)',
+        runtimeOS: 'HarmonyOS',
+        buildOption: {
+          strictMode: {
+            caseSensitiveCheck: true,
+            useNormalizedOHMUrl: true,
+          },
+        },
+      },
+    ],
+    buildModeSet: [
+      {
+        name: 'debug',
+      },
+      {
+        name: 'release',
+      },
+    ],
+  },
+  modules: [
+    {
+      name: 'entry',
+      srcPath: './entry',
+      targets: [
+        {
+          name: 'default',
+          applyToProducts: [
+            'default',
+          ],
+        },
+      ],
+    },
+  ],
+}

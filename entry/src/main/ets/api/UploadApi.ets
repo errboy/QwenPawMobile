@@ -1,0 +1,233 @@
+/**
+ * Attachment picking and multipart upload to POST /api/console/upload.
+ *
+ * The picker URI is held until send time, so a user can queue several files and
+ * still cancel cheaply. Upload streams the file through one reused chunk into a
+ * single pre-sized body: v1 materialised the whole file and then copied it into
+ * the multipart body, which cost twice the file in peak memory and had no cap.
+ */
+import { fileIo as fs, picker, ReadOptions } from '@kit.CoreFileKit';
+import { photoAccessHelper } from '@kit.MediaLibraryKit';
+import { util } from '@kit.ArkTS';
+import { ApiClient } from '../net/ApiClient';
+import { Attachment } from '../model/Attachment';
+import { UploadResult } from '../model/Dtos';
+import { Parts } from '../model/Parts';
+import { ApiPath } from '../core/Wire';
+import { Failure } from '../core/Failure';
+import { Copy } from '../l10n/Copy';
+
+/** Files above this are rejected client-side instead of exhausting memory. */
+const MAX_UPLOAD_BYTES: number = 20 * 1024 * 1024;
+const MAX_UPLOAD_MB: number = MAX_UPLOAD_BYTES / (1024 * 1024);
+
+/** Picker cap, matching the v1 behaviour. */
+const MAX_PICK: number = 4;
+
+/** Reused read buffer; bounds peak memory independently of the file size. */
+const CHUNK_BYTES: number = 1024 * 1024;
+
+const TEXT_MIME_SUFFIXES: string[] = ['txt', 'md', 'log', 'json', 'csv'];
+
+class MultipartBody {
+  boundary: string = '';
+  bytes: ArrayBuffer = new ArrayBuffer(0);
+}
+
+export class UploadApi {
+  private readonly client: ApiClient;
+  private seq: number = 0;
+
+  constructor(client: ApiClient) {
+    this.client = client;
+  }
+
+  static mimeFromName(name: string): string {
+    const dot = name.lastIndexOf('.');
+    const ext = dot >= 0 ? name.substring(dot + 1).toLowerCase() : '';
+    if (ext === 'png') {
+      return 'image/png';
+    }
+    if (ext === 'jpg' || ext === 'jpeg') {
+      return 'image/jpeg';
+    }
+    if (ext === 'gif') {
+      return 'image/gif';
+    }
+    if (ext === 'webp') {
+      return 'image/webp';
+    }
+    if (ext === 'bmp') {
+      return 'image/bmp';
+    }
+    if (ext === 'svg') {
+      return 'image/svg+xml';
+    }
+    if (ext === 'mp4') {
+      return 'video/mp4';
+    }
+    if (ext === 'mov') {
+      return 'video/quicktime';
+    }
+    if (ext === 'mp3') {
+      return 'audio/mpeg';
+    }
+    if (ext === 'wav') {
+      return 'audio/wav';
+    }
+    if (ext === 'pdf') {
+      return 'application/pdf';
+    }
+    if (TEXT_MIME_SUFFIXES.includes(ext)) {
+      return 'text/plain';
+    }
+    return 'application/octet-stream';
+  }
+
+  static nameFromUri(uri: string): string {
+    let s = uri.split('?')[0];
+    const slash = s.lastIndexOf('/');
+    if (slash >= 0) {
+      s = s.substring(slash + 1);
+    }
+    try {
+      s = decodeURIComponent(s);
+    } catch (e) {
+      // Media URIs are not always percent-encoded; the raw segment still names it.
+    }
+    return s.length > 0 ? s : 'file';
+  }
+
+  /** Strip the characters that could break out of the Content-Disposition header. */
+  static sanitizeFileName(name: string): string {
+    let out = '';
+    for (const ch of name) {
+      if (ch !== '"' && ch !== '\r' && ch !== '\n' && ch !== '\\') {
+        out += ch;
+      }
+    }
+    return out.length > 0 ? out : 'file';
+  }
+
+  /** System photo picker (no permission required). */
+  async pickImages(): Promise<Attachment[]> {
+    const helper = new photoAccessHelper.PhotoViewPicker();
+    const options = new photoAccessHelper.PhotoSelectOptions();
+    options.MIMEType = photoAccessHelper.PhotoViewMIMETypes.IMAGE_TYPE;
+    options.maxSelectNumber = MAX_PICK;
+    const result = await helper.select(options);
+    return UploadApi.toAttachments(result.photoUris);
+  }
+
+  /** System file picker for documents and other files. */
+  async pickFiles(): Promise<Attachment[]> {
+    const p = new picker.DocumentViewPicker();
+    const options = new picker.DocumentSelectOptions();
+    options.maxSelectNumber = MAX_PICK;
+    const result = await p.select(options);
+    return UploadApi.toAttachments(result);
+  }
+
+  static toAttachments(uris: string[]): Attachment[] {
+    const out: Attachment[] = [];
+    for (const uri of uris) {
+      const a = new Attachment();
+      a.key = `att_${Date.now()}_${out.length}`;
+      a.uri = uri;
+      a.name = UploadApi.nameFromUri(uri);
+      a.mime = UploadApi.mimeFromName(a.name);
+      out.push(a);
+    }
+    return out;
+  }
+
+  /** Upload one attachment; `url` in the result is the server-side stored path. */
+  async upload(a: Attachment): Promise<UploadResult> {
+    const body = this.compose(a);
+    const raw = await this.client.uploadMultipart(ApiPath.CONSOLE_UPLOAD, body.boundary, body.bytes);
+    const parsed = JSON.parse(raw) as UploadResult;
+    if (Parts.str(parsed.url).length === 0) {
+      throw Failure.parse(Copy.notice_upload_no_path);
+    }
+    if (Parts.str(parsed.file_name).length === 0) {
+      parsed.file_name = a.name;
+    }
+    return parsed;
+  }
+
+  /** Upload in pick order so ChatApi.buildParts can pair results with mimes. */
+  async uploadAll(list: Attachment[]): Promise<UploadResult[]> {
+    const out: UploadResult[] = [];
+    for (const a of list) {
+      out.push(await this.upload(a));
+    }
+    return out;
+  }
+
+  private compose(a: Attachment): MultipartBody {
+    const boundary = this.boundaryName();
+    const file = fs.openSync(a.uri, fs.OpenMode.READ_ONLY);
+    try {
+      const size = UploadApi.statSize(file.fd, a.name);
+      if (size > MAX_UPLOAD_BYTES) {
+        throw Failure.local(Copy.fillN2(Copy.notice_file_too_large, a.name, MAX_UPLOAD_MB));
+      }
+      const enc = new util.TextEncoder();
+      const head = enc.encodeInto(`--${boundary}\r\nContent-Disposition: form-data; `
+        + `name="file"; filename="${UploadApi.sanitizeFileName(a.name)}"\r\n`
+        + `Content-Type: ${a.mime}\r\n\r\n`);
+      const tail = enc.encodeInto(`\r\n--${boundary}--\r\n`);
+      // The body is allocated as an ArrayBuffer up front: a typed array's own
+      // .buffer is ArrayBufferLike, which is not assignable where an ArrayBuffer
+      // is required.
+      const bytes = new ArrayBuffer(head.byteLength + size + tail.byteLength);
+      const out = new Uint8Array(bytes);
+      out.set(new Uint8Array(head.buffer, head.byteOffset, head.byteLength), 0);
+      UploadApi.copyInto(file.fd, size, out, head.byteLength, a.name);
+      out.set(new Uint8Array(tail.buffer, tail.byteOffset, tail.byteLength), head.byteLength + size);
+      const body = new MultipartBody();
+      body.boundary = boundary;
+      body.bytes = bytes;
+      return body;
+    } finally {
+      fs.closeSync(file);
+    }
+  }
+
+  /**
+   * readSync always writes from the start of the buffer it is given, so the file
+   * cannot be pulled into the middle of the body directly. Stream it through one
+   * reused chunk instead of v1's whole-file buffer: peak memory is the body plus
+   * 1MB, not twice the file.
+   */
+  private static copyInto(fd: number, size: number, out: Uint8Array, dest: number,
+    name: string): void {
+    const chunk = new ArrayBuffer(CHUNK_BYTES);
+    let pos = 0;
+    while (pos < size) {
+      const options: ReadOptions = { offset: pos, length: Math.min(CHUNK_BYTES, size - pos) };
+      const got = fs.readSync(fd, chunk, options);
+      if (got <= 0) {
+        break;
+      }
+      out.set(new Uint8Array(chunk, 0, got), dest + pos);
+      pos += got;
+    }
+    if (pos !== size) {
+      throw Failure.local(Copy.fill(Copy.notice_file_truncated, name));
+    }
+  }
+
+  private static statSize(fd: number, name: string): number {
+    const stat = fs.statSync(fd);
+    if (stat.size <= 0) {
+      throw Failure.local(Copy.fill(Copy.notice_file_unreadable, name));
+    }
+    return stat.size;
+  }
+
+  private boundaryName(): string {
+    this.seq += 1;
+    return `----qpm${Date.now()}${this.seq}`;
+  }
+}

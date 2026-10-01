@@ -1,0 +1,72 @@
+{
+  "color": [
+    { "name": "start_window_background", "value": "#F9F8F4" },
+
+    { "name": "app_accent", "value": "#FF7F16" },
+    { "name": "app_accent_hover", "value": "#FF9D4D" },
+    { "name": "app_accent_active", "value": "#CC6612" },
+    { "name": "app_accent_text", "value": "#B85B10" },
+    { "name": "app_accent_faint", "value": "#0AFF7F16" },
+    { "name": "app_accent_soft", "value": "#1AFF7F16" },
+    { "name": "app_accent_soft_hover", "value": "#29FF9D4D" },
+    { "name": "app_accent_border", "value": "#6BFF7F16" },
+    { "name": "app_accent_ring", "value": "#33FF7F16" },
+    { "name": "app_focus_ring", "value": "#B85B10" },
+
+    { "name": "app_bg", "value": "#F9F8F4" },
+    { "name": "app_surface", "value": "#FFFFFF" },
+    { "name": "app_surface_subtle", "value": "#FAF9F7" },
+    { "name": "app_surface_raised", "value": "#FFFFFF" },
+    { "name": "app_surface_sunken", "value": "#F9F8F4" },
+    { "name": "app_shell_bg", "value": "#F9F8F4" },
+    { "name": "app_glass", "value": "#E0FFFFFF" },
+
+    { "name": "app_fill_strong", "value": "#17000000" },
+    { "name": "app_fill", "value": "#0F000000" },
+    { "name": "app_fill_subtle", "value": "#0A000000" },
+    { "name": "app_fill_faint", "value": "#05000000" },
+
+    { "name": "app_border", "value": "#EAE8E7" },
+    { "name": "app_border_strong", "value": "#D8D4CF" },
+    { "name": "app_border_hover", "value": "#D8D4CF" },
+    { "name": "app_border_subtle", "value": "#F0EEEB" },
+
+    { "name": "app_text", "value": "#E1141413" },
+    { "name": "app_text_secondary", "value": "#94141413" },
+    { "name": "app_text_tertiary", "value": "#73141413" },
+    { "name": "app_text_quaternary", "value": "#40141413" },
+    { "name": "app_text_inverse", "value": "#FFFFFF" },
+
+    { "name": "app_info_bg", "value": "#0F1677FF" },
+    { "name": "app_info_hover", "value": "#1F1677FF" },
+    { "name": "app_info_border", "value": "#291677FF" },
+    { "name": "app_info_text", "value": "#1668DC" },
+
+    { "name": "app_success", "value": "#52C41A" },
+    { "name": "app_success_text", "value": "#389E0D" },
+    { "name": "app_success_faint", "value": "#0552C41A" },
+    { "name": "app_success_bg", "value": "#F6FFED" },
+    { "name": "app_success_border", "value": "#B7EB8F" },
+
+    { "name": "app_warning", "value": "#FAAD14" },
+    { "name": "app_warning_text", "value": "#D48806" },
+    { "name": "app_warning_bg", "value": "#FFFBE6" },
+    { "name": "app_warning_border", "value": "#FFE58F" },
+
+    { "name": "app_error", "value": "#FF4D4F" },
+    { "name": "app_error_text", "value": "#CF1322" },
+    { "name": "app_error_faint", "value": "#05FF4D4F" },
+    { "name": "app_error_bg", "value": "#FFF2F0" },
+    { "name": "app_error_border", "value": "#FFCCC7" },
+    { "name": "app_error_ring", "value": "#33FF4D4F" },
+
+    { "name": "app_highlight_bg", "value": "#A6FFD666" },
+    { "name": "app_status_idle", "value": "#94A3B8" },
+    { "name": "app_scrollbar_thumb", "value": "#33000000" },
+    { "name": "app_scrollbar_thumb_hover", "value": "#4D000000" },
+
+    { "name": "app_shadow_sm", "value": "#0F000000" },
+    { "name": "app_shadow_md", "value": "#14000000" },
+    { "name": "app_shadow_panel", "value": "#1F000000" }
+  ]
+}

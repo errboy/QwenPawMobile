@@ -1,0 +1,16 @@
+/node_modules
+/oh_modules
+/local.properties
+/.idea
+**/build
+/.hvigor
+.cxx
+/.clangd
+/.clang-format
+/.clang-tidy
+**/.test
+/.appanalyzer
+/.cache
+# Machine-local signing material: keystore paths plus the passwords that only
+# decrypt on this machine. hvigorfile.ts folds it into the build profile.
+/external-signing-config.json

@@ -1,0 +1,72 @@
+{
+  "color": [
+    { "name": "start_window_background", "value": "#141414" },
+
+    { "name": "app_accent", "value": "#FF9D4D" },
+    { "name": "app_accent_hover", "value": "#FF9D4D" },
+    { "name": "app_accent_active", "value": "#CC7E3D" },
+    { "name": "app_accent_text", "value": "#FFC494" },
+    { "name": "app_accent_faint", "value": "#14FF9D4D" },
+    { "name": "app_accent_soft", "value": "#29FF9D4D" },
+    { "name": "app_accent_soft_hover", "value": "#38FF9D4D" },
+    { "name": "app_accent_border", "value": "#80FF9D4D" },
+    { "name": "app_accent_ring", "value": "#33FF9D4D" },
+    { "name": "app_focus_ring", "value": "#FFC494" },
+
+    { "name": "app_bg", "value": "#141414" },
+    { "name": "app_surface", "value": "#1F1F1F" },
+    { "name": "app_surface_subtle", "value": "#1A1A1A" },
+    { "name": "app_surface_raised", "value": "#262626" },
+    { "name": "app_surface_sunken", "value": "#262626" },
+    { "name": "app_shell_bg", "value": "#1A1A1A" },
+    { "name": "app_glass", "value": "#E01F1F1F" },
+
+    { "name": "app_fill_strong", "value": "#29FFFFFF" },
+    { "name": "app_fill", "value": "#1FFFFFFF" },
+    { "name": "app_fill_subtle", "value": "#14FFFFFF" },
+    { "name": "app_fill_faint", "value": "#0AFFFFFF" },
+
+    { "name": "app_border", "value": "#1FFFFFFF" },
+    { "name": "app_border_strong", "value": "#26FFFFFF" },
+    { "name": "app_border_hover", "value": "#4DFFFFFF" },
+    { "name": "app_border_subtle", "value": "#14FFFFFF" },
+
+    { "name": "app_text", "value": "#D9FFFFFF" },
+    { "name": "app_text_secondary", "value": "#A6FFFFFF" },
+    { "name": "app_text_tertiary", "value": "#73FFFFFF" },
+    { "name": "app_text_quaternary", "value": "#59FFFFFF" },
+    { "name": "app_text_inverse", "value": "#FFFFFF" },
+
+    { "name": "app_info_bg", "value": "#1F1677FF" },
+    { "name": "app_info_hover", "value": "#331677FF" },
+    { "name": "app_info_border", "value": "#471677FF" },
+    { "name": "app_info_text", "value": "#6CB2FF" },
+
+    { "name": "app_success", "value": "#49AA19" },
+    { "name": "app_success_text", "value": "#6ABE39" },
+    { "name": "app_success_faint", "value": "#0D49AA19" },
+    { "name": "app_success_bg", "value": "#162312" },
+    { "name": "app_success_border", "value": "#274916" },
+
+    { "name": "app_warning", "value": "#D89614" },
+    { "name": "app_warning_text", "value": "#E8B339" },
+    { "name": "app_warning_bg", "value": "#2B2111" },
+    { "name": "app_warning_border", "value": "#594214" },
+
+    { "name": "app_error", "value": "#DC4446" },
+    { "name": "app_error_text", "value": "#FF7875" },
+    { "name": "app_error_faint", "value": "#0DDC4446" },
+    { "name": "app_error_bg", "value": "#2C1618" },
+    { "name": "app_error_border", "value": "#58191C" },
+    { "name": "app_error_ring", "value": "#40DC4446" },
+
+    { "name": "app_highlight_bg", "value": "#59FFD666" },
+    { "name": "app_status_idle", "value": "#59FFFFFF" },
+    { "name": "app_scrollbar_thumb", "value": "#33FFFFFF" },
+    { "name": "app_scrollbar_thumb_hover", "value": "#4DFFFFFF" },
+
+    { "name": "app_shadow_sm", "value": "#4D000000" },
+    { "name": "app_shadow_md", "value": "#66000000" },
+    { "name": "app_shadow_panel", "value": "#5C000000" }
+  ]
+}
