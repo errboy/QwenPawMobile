@@ -1,0 +1,14 @@
+{
+  "listen_host": "0.0.0.0",
+  "listen_port": 61700,
+  "upstream_host": "127.0.0.1",
+  "upstream_port": 0,
+  "username": "",
+  "credential": "",
+  "token_secret": "",
+  "token_ttl_seconds": 0,
+  "max_connections": 64,
+  "login_max_failures": 8,
+  "login_window_seconds": 60,
+  "allow_cidrs": ["192.168.1.0/24"]
+}
