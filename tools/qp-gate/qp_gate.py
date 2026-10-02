@@ -62,6 +62,25 @@ def redact(path: str) -> str:
     return path.split("?", 1)[0]
 
 
+def hint(*args: str) -> str:
+    """一条能原样粘贴的命令。让用户先 cd 到本目录再敲相对路径，等于没说。"""
+    return " ".join([f'"{sys.executable}"', f'"{Path(__file__).resolve()}"', *args])
+
+
+def run_captured(argv: list, timeout: float) -> subprocess.CompletedProcess:
+    """跑外部命令，自己把输出解成文本。
+
+    绝不用 text=True：Windows 上 Python 拿 GBK 去解 netsh / tasklist 的输出，一句中文
+    报错里的非法字节就能炸掉解码线程——stdout 变成 None 或者直接抛 UnicodeDecodeError，
+    两者都不在调用方的 except 覆盖里，会把已经配好的网关带走。这里只用 errors="replace"
+    解，调用方检索的全是 ASCII（规则名、端口号、PID），解出来的乱码无害。
+    """
+    done = subprocess.run(argv, capture_output=True, timeout=timeout)
+    done.stdout = (done.stdout or b"").decode("utf-8", "replace")
+    done.stderr = (done.stderr or b"").decode("utf-8", "replace")
+    return done
+
+
 # ---------------------------------------------------------------- 凭据与令牌
 
 
@@ -199,14 +218,14 @@ class Config:
     @classmethod
     def load(cls, path: Path) -> "Config":
         if not path.exists():
-            raise SystemExit(f"找不到配置 {path}，先跑: python qp_gate.py --init")
+            raise SystemExit(f"找不到配置 {path}，先跑: {hint('--init')}")
         try:
             raw = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, ValueError) as exc:
             raise SystemExit(f"配置 {path} 读不了: {exc}") from exc
         config = cls(raw, path)
         if not config.username or not config.credential:
-            raise SystemExit(f"{path} 里没有账号或口令，跑: python qp_gate.py --set-password")
+            raise SystemExit(f"{path} 里没有账号或口令，跑: {hint('--set-password')}")
         if not config.token_secret:
             config.token_secret = secrets.token_hex(32)
             config.save()
@@ -263,8 +282,7 @@ def listening_loopback_ports() -> list:
     ports: set = set()
     try:
         if os.name == "nt":
-            out = subprocess.run(["netstat", "-ano", "-p", "tcp"],
-                                 capture_output=True, text=True, timeout=10).stdout
+            out = run_captured(["netstat", "-ano", "-p", "tcp"], 10).stdout
             rows = re.findall(
                 r"TCP\s+(127\.0\.0\.1|\[::1\]):(\d+)\s+\S+\s+LISTENING\s+(\d+)", out)
             pids = {row[2] for row in rows}
@@ -276,8 +294,7 @@ def listening_loopback_ports() -> list:
                 if not name or UPSTREAM_PROCESS_HINT.search(name):
                     ports.add(int(port))
         else:
-            out = subprocess.run(["ss", "-ltnp"], capture_output=True, text=True,
-                                 timeout=10).stdout
+            out = run_captured(["ss", "-ltnp"], 10).stdout
             for match in re.finditer(r":(\d+)\s.*?pid=(\d+)", out):
                 ports.add(int(match.group(1)))
     except (OSError, subprocess.SubprocessError, ValueError):
@@ -290,8 +307,7 @@ def _windows_process_names(pids: set) -> dict:
     if not pids:
         return names
     try:
-        out = subprocess.run(["tasklist", "/FO", "CSV", "/NH"],
-                             capture_output=True, text=True, timeout=10).stdout
+        out = run_captured(["tasklist", "/FO", "CSV", "/NH"], 10).stdout
         for line in out.splitlines():
             fields = re.findall(r'"([^"]*)"', line)
             if len(fields) >= 2 and fields[1].isdigit() and fields[1] in pids:
@@ -708,23 +724,21 @@ def ensure_firewall_rule(port: int) -> bool:
         log(f"非 Windows，请自行放行 TCP {port}（ufw/firewalld）")
         return True
     try:
-        shown = subprocess.run(["netsh", "advfirewall", "firewall", "show", "rule",
-                                f"name={FIREWALL_RULE}"],
-                               capture_output=True, text=True, timeout=15).stdout
+        shown = run_captured(["netsh", "advfirewall", "firewall", "show", "rule",
+                              f"name={FIREWALL_RULE}"], 15).stdout
         if FIREWALL_RULE in shown and str(port) in shown:
             log(f"防火墙规则已存在（TCP {port} 入站放行）")
             return True
-    except (OSError, subprocess.SubprocessError):
+    except (OSError, subprocess.SubprocessError, ValueError):
         pass
     args = (f"advfirewall firewall add rule name={FIREWALL_RULE} dir=in "
             f"action=allow protocol=tcp localport={port}")
     script = (f"Start-Process -FilePath netsh -Verb RunAs "
               f"-ArgumentList '{args}' -WindowStyle Hidden")
     try:
-        done = subprocess.run(["powershell", "-NoProfile", "-ExecutionPolicy",
-                               "Bypass", "-Command", script],
-                              capture_output=True, text=True, timeout=120)
-    except (OSError, subprocess.SubprocessError) as exc:
+        done = run_captured(["powershell", "-NoProfile", "-ExecutionPolicy",
+                             "Bypass", "-Command", script], 120)
+    except (OSError, subprocess.SubprocessError, ValueError) as exc:
         log(f"ERR 无法调用防火墙命令: {exc}")
         return False
     if done.returncode != 0:
@@ -741,8 +755,8 @@ def remove_firewall_rule() -> bool:
         return True
     script = ("Start-Process -FilePath netsh -Verb RunAs -ArgumentList "
               f"'advfirewall firewall delete rule name={FIREWALL_RULE}' -WindowStyle Hidden")
-    done = subprocess.run(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass",
-                           "-Command", script], capture_output=True, text=True)
+    done = run_captured(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass",
+                         "-Command", script], 120)
     log(f"已删除规则 {FIREWALL_RULE}" if done.returncode == 0 else
         "删除失败，请用管理员命令行执行: netsh advfirewall firewall delete rule "
         f"name={FIREWALL_RULE}")

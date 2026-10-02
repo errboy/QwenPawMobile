@@ -490,6 +490,28 @@ def _shutdown_gremlin() -> None:
         _gremlin.pop("sock", None)
 
 
+def external_output_suite() -> None:
+    """外部命令的输解决不开时，不能把网关带走。
+
+    用户真机踩过：ensure_firewall_rule 用 text=True 捕 netsh 的中文报错，Python 按本地
+    编码（GBK）解不动其中一个字节，解码线程炸掉、stdout 变成 None，`FIREWALL_RULE in
+    None` 抛 TypeError —— gate.json 已经写好了却起不来，整个 --init 白跑一遍。
+    """
+    emits = ("import sys;"
+             "sys.stdout.buffer.write(b'\\xff\\xa7\\xfe\\x80 bad'"
+             " + b'name=qp-gate localport: 61700')")
+    done = qp_gate.run_captured([sys.executable, "-c", emits], 30)
+    check("解不开的字节不再抛异常，stdout 仍是 str",
+          isinstance(done.stdout, str), type(done.stdout).__name__)
+    check("乱码里仍能认出 ASCII 规则名与端口",
+          qp_gate.FIREWALL_RULE in done.stdout and "61700" in done.stdout,
+          repr(done.stdout[:80]))
+    missing = qp_gate.run_captured(
+        [sys.executable, "-c", "import sys; sys.exit(3)"], 30)
+    check("非零退出不抛，交回调用方判断", missing.returncode == 3,
+          str(missing.returncode))
+
+
 def main() -> int:
     holder = {}
 
@@ -524,6 +546,7 @@ def main() -> int:
         cidr_suite(Path(tmpdir) / "cidr.json", stub_port)
         upstream_missing_suite(Path(tmpdir) / "dead.json", stub_port)
         discovery_suite(stub_port)
+        external_output_suite()
 
     total = len(RESULTS)
     passed = sum(1 for _n, ok in RESULTS if ok)
