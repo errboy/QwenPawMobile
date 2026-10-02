@@ -10,6 +10,7 @@ import { ContentType } from '../core/Wire';
 export class PartTemplates {
   image: string = '[图片]';
   video: string = '[视频]';
+  audio: string = '[语音]';
   fileTemplate: string = '[文件: %s]';
   unknownTool: string = '工具';
   /** Appended to a tool card that carries the result rather than the request. */
@@ -34,6 +35,8 @@ export class Parts {
         out += t.image;
       } else if (p.type === ContentType.VIDEO) {
         out += t.video;
+      } else if (p.type === ContentType.AUDIO) {
+        out += t.audio;
       } else if (p.type === ContentType.FILE) {
         out += t.fileTemplate.replace('%s', Parts.fileName(p));
       }

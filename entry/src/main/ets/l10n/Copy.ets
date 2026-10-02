@@ -111,18 +111,43 @@ export class Copy {
   static readonly chat_send: string = '发送并插队';
   static readonly chat_send_idle: string = '发送';
   static readonly chat_queued_hint: string = '排队中 · 点我撤回';
-  static readonly chat_attach_gallery: string = '🖼 相册图片';
+  static readonly chat_attach_gallery: string = '🖼 相册（图片/视频）';
   static readonly chat_attach_files: string = '📄 手机文件';
+  static readonly chat_attach_audio: string = '🎵 音频';
+  /** Starts a recording; stopping it is the recording bar's job, not this row's. */
+  static readonly chat_attach_record: string = '🎙 录一段语音';
+  static readonly chat_recording: string = '录音中 %s';
+  static readonly chat_rec_stop: string = '停止录音';
+  static readonly chat_rec_cancel: string = '丢弃';
+  static readonly notice_voice_denied: string = '没有麦克风权限，无法录音';
+  static readonly notice_voice_failed: string = '录音失败：%s';
+  static readonly notice_voice_code: string = '录音失败（错误码 %d）';
+  static readonly notice_voice_none: string = '没有进行中的录音';
+  static readonly notice_voice_empty: string = '录音是空的，没有附上文件';
   static readonly chat_reasoning_label: string = '💭 深度思考';
   static readonly chat_tool_label: string = '🔧 %s';
   static readonly chat_tool_output_suffix: string = ' · 输出';
   static readonly chat_default_tool_name: string = '工具';
   static readonly chat_part_image: string = '[图片]';
   static readonly chat_part_video: string = '[视频]';
+  static readonly chat_part_audio: string = '[语音]';
   static readonly chat_part_file: string = '[文件: %s]';
   static readonly chat_attachment_line: string = '📎 %s';
   static readonly chat_image_loading: string = '加载图片…';
   static readonly chat_image_unavailable: string = '图片暂不可用';
+  /** Chip label when no loop mode is chosen; the server's default mode has no command. */
+  static readonly chat_loop_none: string = '默认模式';
+  /** Model label when the phone sends no override, so the PC agent's slot answers. */
+  static readonly chat_model_follow: string = '电脑端默认';
+  /**
+   * Approval levels, word for word the names the PC console's zh locale uses for
+   * the same four values, so both screens describe one setting.
+   */
+  static readonly chat_approval_follow: string = '电脑端默认';
+  static readonly chat_approval_strict: string = '严格模式';
+  static readonly chat_approval_smart: string = '智能模式';
+  static readonly chat_approval_auto: string = '自动模式';
+  static readonly chat_approval_off: string = '关闭模式';
 
   // ---------- approvals ----------
   static readonly approval_headline: string = '⛔ %s';
@@ -147,7 +172,8 @@ export class Copy {
   static readonly notice_upload_failed: string = '上传失败：%s';
   static readonly notice_upload_no_path: string = '上传响应缺少文件路径';
   static readonly notice_pick_failed: string = '选择文件失败：%s';
-  static readonly notice_file_too_large: string = '%s 超过 %dMB 上限，已跳过';
+  static readonly notice_pick_skipped: string = '已跳过：%s';
+  static readonly notice_file_too_large: string = '%s 超过 %dMB 上限';
   static readonly notice_file_unreadable: string = '无法读取文件 %s';
   static readonly notice_file_truncated: string = '文件 %s 读取中断';
   static readonly notice_stop_failed: string = '停止失败：%s';

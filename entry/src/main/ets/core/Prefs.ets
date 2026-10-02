@@ -6,6 +6,8 @@
 import { preferences } from '@kit.ArkData';
 import { common } from '@kit.AbilityKit';
 import { ChatRef } from '../model/Dtos';
+import { ChatPreference } from '../model/ChatPrefs';
+import { ApprovalLevel } from './Wire';
 
 const STORE_NAME: string = 'qwenpaw_store';
 
@@ -24,6 +26,8 @@ class Key {
   static readonly CONFIG_USER: string = 'config_username';
   static readonly PASSWORD: string = 'auth_password';
   static readonly SCAN_PORT: string = 'scan_port';
+  /** Composer choices per chat: approval level, model slot, loop mode. */
+  static readonly CHAT_PREFS: string = 'chat_prefs';
 }
 
 export class Prefs {
@@ -56,6 +60,11 @@ export class Prefs {
 
 function isFilled(value: string | undefined): boolean {
   return value !== undefined && typeof value === 'string' && value.length > 0;
+}
+
+/** Declared strings can come back from storage as null; never dereference them raw. */
+function text(value: string | undefined | null): string {
+  return value === undefined || value === null ? '' : value;
 }
 
 /** The port a fresh install sweeps; matches QwenPaw's own console default. */
@@ -196,5 +205,74 @@ export class Settings {
     await Prefs.erase(ctx, Key.USERNAME);
     await Prefs.erase(ctx, Key.LAST_CHAT);
     await Prefs.erase(ctx, Key.SIGNED_IN);
+  }
+}
+
+/** Chats whose composer choices stay on the device, newest last. */
+const MAX_CHAT_PREFS: number = 60;
+
+/**
+ * Per-chat composer preferences.
+ *
+ * Stored as an ordered array rather than an object because the server keeps no
+ * session-scoped copy of these: an entry is only ever looked up by the chat that
+ * is currently open, and the cap drops the least recently touched chat.
+ */
+export class ChatPreferences {
+  static async get(ctx: common.Context, chatId: string): Promise<ChatPreference> {
+    for (const pref of await ChatPreferences.read(ctx)) {
+      if (pref.chatId === chatId) {
+        return pref;
+      }
+    }
+    const fresh = new ChatPreference();
+    fresh.chatId = chatId;
+    return fresh;
+  }
+
+  static async set(ctx: common.Context, pref: ChatPreference): Promise<void> {
+    const kept = (await ChatPreferences.read(ctx)).filter((p: ChatPreference): boolean =>
+      p.chatId !== pref.chatId);
+    kept.push(pref);
+    await Prefs.write(ctx, Key.CHAT_PREFS, JSON.stringify(kept.slice(-MAX_CHAT_PREFS)));
+  }
+
+  private static async read(ctx: common.Context): Promise<ChatPreference[]> {
+    const raw = await Prefs.read(ctx, Key.CHAT_PREFS, '');
+    if (!isFilled(raw)) {
+      return [];
+    }
+    try {
+      const parsed = JSON.parse(raw) as ChatPreference[];
+      const out: ChatPreference[] = [];
+      for (const pref of parsed) {
+        if (isFilled(pref.chatId)) {
+          out.push(ChatPreferences.normalise(pref));
+        }
+      }
+      return out;
+    } catch (e) {
+      return [];
+    }
+  }
+
+  /**
+   * A stored level the server would not recognise is worth nothing; drop it. Every
+   * field is re-read through text() because a half-written entry can carry an
+   * explicit null where a string was declared.
+   *
+   * The copy into a real instance matters: JSON.parse returns a plain object, and
+   * a preference is read through methods (modelOverride) that only the class has.
+   */
+  private static normalise(stored: ChatPreference): ChatPreference {
+    const pref = new ChatPreference();
+    pref.chatId = text(stored.chatId);
+    pref.providerId = text(stored.providerId);
+    pref.model = text(stored.model);
+    pref.loopModeId = text(stored.loopModeId);
+    pref.loopSlash = text(stored.loopSlash);
+    const level = text(stored.approvalLevel);
+    pref.approvalLevel = level.length > 0 && ApprovalLevel.isKnown(level) ? level.toUpperCase() : '';
+    return pref;
   }
 }

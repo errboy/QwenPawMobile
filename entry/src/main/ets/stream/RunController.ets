@@ -17,6 +17,7 @@ import { ChatApi } from '../api/ChatApi';
 import { Failure } from '../core/Failure';
 import { Http, RunStatus } from '../core/Wire';
 import { RequestPart } from '../model/Dtos';
+import { ChatPreference } from '../model/ChatPrefs';
 import { SseEvent } from '../net/SseDecoder';
 import { SseHandler, SseSession } from '../net/SseSession';
 import { StreamFacts, StreamReducer, Upsert } from './StreamReducer';
@@ -96,6 +97,8 @@ export class RunController {
   chatId: string = '';
   sessionId: string = '';
   userId: string = '';
+  /** Composer choices carried on every send; the server stores none of them. */
+  pref: ChatPreference = new ChatPreference();
 
   constructor(api: ChatApi, sink: RunSink, reducer: StreamReducer) {
     this.api = api;
@@ -210,7 +213,7 @@ export class RunController {
   }
 
   private startRun(parts: RequestPart[]): void {
-    this.open(ChatApi.bodyOf(this.sessionId, parts, this.userId), false);
+    this.open(ChatApi.bodyOf(this.sessionId, parts, this.userId, this.pref), false);
   }
 
   private open(bodyJson: string, isReconnect: boolean): void {

@@ -10,22 +10,27 @@
  *   - Nothing here polls: the page registers with GlobalPoller and forwards
  *     snapshots, so /api/chats is fetched once per tick for the whole app.
  */
+import { common } from '@kit.AbilityKit';
 import { ApprovalApi } from '../api/ApprovalApi';
 import { ChatApi } from '../api/ChatApi';
 import { UploadApi } from '../api/UploadApi';
 import { Failure } from '../core/Failure';
+import { ChatPreferences } from '../core/Prefs';
 import { ChatStatus, MsgType, Role, RunStatus, ToolTypes } from '../core/Wire';
 import { MediaLoader, MediaValue } from '../media/MediaLoader';
 import { Attachment } from '../model/Attachment';
+import { ChatPreference } from '../model/ChatPrefs';
 import {
   ApprovalInfo,
   ChatHistory,
   ChatMessageModel,
   ChatRef,
   ChatSpec,
+  LoopModeInfo,
   RequestPart,
   UploadResult
 } from '../model/Dtos';
+import { LoopModes } from '../model/LoopModes';
 import { PartTemplates, Parts } from '../model/Parts';
 import { PollSnapshot, PollTarget } from '../polling/GlobalPoller';
 import { StreamReducer, Upsert } from '../stream/StreamReducer';
@@ -38,6 +43,7 @@ function partTemplates(): PartTemplates {
   const t = new PartTemplates();
   t.image = Copy.chat_part_image;
   t.video = Copy.chat_part_video;
+  t.audio = Copy.chat_part_audio;
   t.fileTemplate = Copy.chat_part_file;
   t.unknownTool = Copy.chat_default_tool_name;
   t.outputSuffix = Copy.chat_tool_output_suffix;
@@ -154,6 +160,37 @@ export class ChatStore implements RunSink, PollTarget {
     this.controller.bind(chatId, sessionId, userId);
   }
 
+  // ---------- composer preferences ----------
+  /** Loop catalog, kept here so a send can resolve a mode without refetching. */
+  private loopModes: LoopModeInfo[] = [];
+
+  setLoopModes(modes: LoopModeInfo[]): void {
+    this.loopModes = modes;
+  }
+
+  /** Live composer choices. Empty fields mean 'follow the PC agent's default'. */
+  prefs(): ChatPreference {
+    return this.controller.pref;
+  }
+
+  /**
+   * Load this chat's stored choices. The server keeps no per-session copy of the
+   * approval level or the model slot, so the phone is the only place they exist.
+   */
+  async restorePrefs(ctx: common.Context): Promise<void> {
+    const stored = await ChatPreferences.get(ctx, this.ref.chatId);
+    stored.chatId = this.ref.chatId;
+    this.controller.pref = stored;
+    this.emit();
+  }
+
+  async savePrefs(ctx: common.Context, pref: ChatPreference): Promise<void> {
+    pref.chatId = this.ref.chatId;
+    this.controller.pref = pref;
+    await ChatPreferences.set(ctx, pref);
+    this.emit();
+  }
+
   async bootstrap(): Promise<void> {
     this.loading = true;
     this.emit();
@@ -194,8 +231,12 @@ export class ChatStore implements RunSink, PollTarget {
       this.uploading = false;
     }
     const mimes: string[] = attachments.map((a: Attachment): string => a.mime);
-    const parts = ChatApi.buildParts(trimmed, uploads, mimes);
-    const bubble = this.addUserBubble(trimmed, uploads);
+    // The loop mode is a prefix on the text, not a field on the body, and a live
+    // run must not have a second command queued in front of it.
+    const wire = LoopModes.apply(trimmed, this.loopModes, this.controller.pref.loopSlash,
+      !this.controller.busy());
+    const parts = ChatApi.buildParts(wire, uploads, mimes);
+    const bubble = this.addUserBubble(wire, uploads);
     this.controller.submit(bubble.key, parts);
     this.emit();
   }
@@ -237,6 +278,18 @@ export class ChatStore implements RunSink, PollTarget {
   /** The page owns the picker, so its failures still have to reach the notice feed. */
   reportPickFailure(detail: string): void {
     this.pushNotice(Copy.fill(Copy.notice_pick_failed, detail), NoticeTone.ERROR);
+  }
+
+  /** Files the picker handed over but the phone will not upload. */
+  reportPickSkipped(detail: string): void {
+    if (detail.length > 0) {
+      this.pushNotice(Copy.fill(Copy.notice_pick_skipped, detail), NoticeTone.MUTED);
+    }
+  }
+
+  /** A recording that never became a file, including a refused microphone. */
+  reportVoiceFailure(detail: string): void {
+    this.pushNotice(detail, NoticeTone.ERROR);
   }
 
   onPoll(snapshot: PollSnapshot): void {
@@ -425,10 +478,14 @@ export class ChatStore implements RunSink, PollTarget {
     m.kind = UiKind.TEXT;
     if (text.length > 0) {
       m.text = text;
-    } else {
+    }
+    // A video or voice note leaves no visible trace of its own, so the bubble has
+    // to name it even when the message also carries text.
+    if (uploads.length > 0) {
       const names: string[] = uploads.map((u: UploadResult): string =>
         Copy.fill(Copy.chat_attachment_line, u.file_name));
-      m.text = names.join('\n');
+      const line = names.join('\n');
+      m.text = m.text.length > 0 ? `${m.text}\n${line}` : line;
     }
     for (const up of uploads) {
       if (m.imageRef.length === 0 && UploadApi.mimeFromName(up.file_name).startsWith('image/')) {

@@ -143,6 +143,17 @@ export class OutgoingMessage {
   content: RequestPart[] = [];
 }
 
+/** Per-request model pick, read out of the chat body by agents/model_factory.py. */
+export class ModelSlot {
+  provider_id: string = '';
+  model: string = '';
+}
+
+/** Only approval_level is used; the rest of the context is server-internal. */
+export class RequestContext {
+  approval_level?: string;
+}
+
 /** Body of POST /api/console/chat (AgentRequest envelope, extra="allow"). */
 export class AgentRequest {
   input: OutgoingMessage[] = [];
@@ -151,6 +162,85 @@ export class AgentRequest {
   stream: boolean = true;
   /** True re-attaches to a run already in flight and replays buffered frames. */
   reconnect?: boolean;
+  /** Both of these are pass-through: omitted means 'follow the desktop's own default'. */
+  request_context?: RequestContext;
+  model_slot_override?: ModelSlot;
+}
+
+// ---------- composer capabilities (all read-only) ----------
+
+/** One entry of /workspace/commands/available; `name` carries no leading slash. */
+export class SlashCommand {
+  name: string = '';
+  description: string = '';
+  category: string = '';
+}
+
+export class CommandListResponse {
+  commands: SlashCommand[] = [];
+}
+
+/**
+ * One loop mode. The server has no setter for the active mode: `slash_command`
+ * is what gets prefixed to the message text so the runtime's slash dispatch
+ * picks the loop.
+ */
+export class LoopModeInfo {
+  id: string = '';
+  name: string = '';
+  /** Empty for the built-in 'default' loop, which needs no prefix. */
+  slash_command: string = '';
+  description: string = '';
+  /** builtin | custom | plugin. */
+  source: string = 'builtin';
+  name_i18n?: Record<string, string>;
+  description_i18n?: Record<string, string>;
+}
+
+export class LoopModeStatus {
+  /** idle | running | awaiting_user. A prefix may only be applied while idle. */
+  state: string = 'idle';
+  mode?: LoopModeInfo;
+}
+
+export class ModelInfo {
+  id: string = '';
+  name: string = '';
+}
+
+/**
+ * The phone reads only enough to rebuild the PC chat picker: a provider is
+ * offerable when it has models and the credential it demands is present.
+ */
+export class ProviderInfo {
+  id: string = '';
+  name: string = '';
+  base_url: string = '';
+  api_key: string = '';
+  models: ModelInfo[] = [];
+  extra_models: ModelInfo[] = [];
+  is_free_tier: boolean = false;
+  is_custom: boolean = false;
+  is_local: boolean = false;
+  require_api_key: boolean = true;
+}
+
+/** GET /models/active. Null active_llm means the agent has no configured slot. */
+export class ActiveModelsResponse {
+  active_llm?: ModelSlot;
+}
+
+/** GET /settings/upload-limit. Absent means the server set no cap. */
+export class UploadLimit {
+  upload_max_size_mb?: number;
+}
+
+/**
+ * GET /workspace/running-config. The document is large and the picker needs one
+ * field of it; the phone never writes any of it back.
+ */
+export class RunningConfigLevel {
+  approval_level?: string;
 }
 
 /**

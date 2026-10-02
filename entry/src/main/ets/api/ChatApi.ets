@@ -7,6 +7,7 @@ import { ApiClient } from '../net/ApiClient';
 import { SseHandler, SseSession } from '../net/SseSession';
 import { Failure } from '../core/Failure';
 import { AgentRequest, ChatHistory, ChatSpec, OutgoingMessage, RequestPart, UploadResult } from '../model/Dtos';
+import { ChatPreference } from '../model/ChatPrefs';
 import { ApiPath, ContentType } from '../core/Wire';
 
 export class ChatApi {
@@ -79,7 +80,13 @@ export class ChatApi {
     return parts;
   }
 
-  static bodyOf(sessionId: string, parts: RequestPart[], userId: string | undefined): string {
+  /**
+   * `pref` rides along as pass-through body fields: leaving both unset is what
+   * "follow the desktop's own default" looks like on the wire, because the server
+   * only reads them when they are present.
+   */
+  static bodyOf(sessionId: string, parts: RequestPart[], userId: string | undefined,
+    pref?: ChatPreference): string {
     const message = new OutgoingMessage();
     message.role = 'user';
     message.content = parts;
@@ -88,6 +95,11 @@ export class ChatApi {
     body.session_id = sessionId;
     if (userId !== undefined && userId.length > 0) {
       body.user_id = userId;
+    }
+    if (pref !== undefined) {
+      // An unknown stored level sends nothing, which is the server's own AUTO.
+      body.request_context = pref.approvalOverride();
+      body.model_slot_override = pref.modelOverride();
     }
     return JSON.stringify(body);
   }

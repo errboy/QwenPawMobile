@@ -103,6 +103,16 @@ export class ApiPath {
   static readonly APPROVAL_APPROVE: string = '/approval/approve';
   static readonly APPROVAL_DENY: string = '/approval/deny';
   static readonly FILES_PREVIEW: string = '/files/preview';
+  // Composer capabilities the PC console exposes. All read-only: the phone never
+  // writes a global setting, since PUT /workspace/running-config replaces the
+  // whole document and one stray tap would rewrite the desktop's configuration.
+  static readonly COMMANDS_AVAILABLE: string = '/workspace/commands/available';
+  static readonly RUNNING_CONFIG: string = '/workspace/running-config';
+  static readonly LOOPS: string = '/loops';
+  static readonly LOOPS_STATUS: string = '/loops/status';
+  static readonly MODELS: string = '/models';
+  static readonly MODELS_ACTIVE: string = '/models/active';
+  static readonly SETTINGS_UPLOAD_LIMIT: string = '/settings/upload-limit';
 }
 
 export class Http {
@@ -136,4 +146,23 @@ export class Severity {
 export class ApprovalScope {
   static readonly EXACT: string = 'exact';
   static readonly SIMILAR: string = 'similar';
+}
+
+/**
+ * Tool execution level, carried per request as request_context.approval_level.
+ * The server stores nothing here, so the phone keeps it per chat. An unknown
+ * level sends no field at all, which leaves the agent's own running-config level
+ * in force; the chip reads that value to say what it is following.
+ */
+export class ApprovalLevel {
+  static readonly STRICT: string = 'STRICT';
+  static readonly SMART: string = 'SMART';
+  static readonly AUTO: string = 'AUTO';
+  static readonly OFF: string = 'OFF';
+  static readonly ALL: string[] = [ApprovalLevel.STRICT, ApprovalLevel.SMART,
+    ApprovalLevel.AUTO, ApprovalLevel.OFF];
+
+  static isKnown(value: string): boolean {
+    return ApprovalLevel.ALL.includes(value.toUpperCase());
+  }
 }

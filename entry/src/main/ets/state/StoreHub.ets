@@ -11,6 +11,7 @@ import { AgentApi } from '../api/AgentApi';
 import { ApprovalApi } from '../api/ApprovalApi';
 import { AuthApi } from '../api/AuthApi';
 import { ChatApi } from '../api/ChatApi';
+import { ComposerApi } from '../api/ComposerApi';
 import { UploadApi } from '../api/UploadApi';
 import { ApiClient } from '../net/ApiClient';
 import { HttpTransport } from '../net/HttpTransport';
@@ -27,6 +28,7 @@ export class StoreHub {
   readonly auth: AuthApi;
   readonly agentApi: AgentApi;
   readonly chatApi: ChatApi;
+  readonly composerApi: ComposerApi;
   readonly approvalApi: ApprovalApi;
   readonly uploadApi: UploadApi;
   readonly media: MediaLoader;
@@ -44,6 +46,7 @@ export class StoreHub {
     this.auth = new AuthApi(this.client);
     this.agentApi = new AgentApi(this.client);
     this.chatApi = new ChatApi(this.client);
+    this.composerApi = new ComposerApi(this.client);
     this.approvalApi = new ApprovalApi(this.client);
     this.uploadApi = new UploadApi(this.client);
     this.media = new MediaLoader(this.client);

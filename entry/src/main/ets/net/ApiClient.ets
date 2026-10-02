@@ -3,7 +3,8 @@
  * and the X-Agent-Id header, and is the single place where an HTTP response or a
  * transport error becomes a Failure.
  */
-import { Failure } from '../core/Failure';
+import { Failure, FailureKind } from '../core/Failure';
+import { Log } from '../core/Log';
 import { ApiPath, Http } from '../core/Wire';
 import { RequestSpec, ResponseShape, Transport } from './Transport';
 import { SseHandler, SseSession } from './SseSession';
@@ -83,8 +84,23 @@ export class ApiClient {
     return h;
   }
 
+  /**
+   * A GET is safe to repeat, and a large catalog body can be cut off in flight:
+   * the peer closes the read mid-body, which surfaces as a transport error rather
+   * than an HTTP status. Retrying once keeps the composer pickers on screen for a
+   * single dropped read, while a server verdict still fails straight through.
+   */
   get(path: string): Promise<string> {
-    return this.request(HttpMethod.GET, path, undefined);
+    return this.request(HttpMethod.GET, path, undefined).catch((err: Error): Promise<string> => {
+      const failure = Failure.from(err);
+      if (failure.kind !== FailureKind.Offline && failure.kind !== FailureKind.Timeout) {
+        throw failure;
+      }
+      // A picker that lands a moment late looks exactly like one that never
+      // failed, so the dropped read has to leave a trace.
+      Log.warn(`GET ${path} dropped mid-read (transport=${failure.transportCode}), retrying once`);
+      return this.request(HttpMethod.GET, path, undefined);
+    });
   }
 
   /** Omit bodyJson for a bodyless POST: /console/chat/stop rejects an empty one. */
