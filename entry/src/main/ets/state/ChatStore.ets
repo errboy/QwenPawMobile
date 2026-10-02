@@ -191,6 +191,21 @@ export class ChatStore implements RunSink, PollTarget {
     this.emit();
   }
 
+  /**
+   * Persist the composer draft. Deliberately does not emit: the text on screen is
+   * already the source of truth while the page is open, and an emit per keystroke
+   * would re-render the whole conversation.
+   */
+  async saveDraft(ctx: common.Context, draft: string): Promise<void> {
+    const pref = this.controller.pref;
+    if (pref.draft === draft) {
+      return;
+    }
+    pref.draft = draft;
+    pref.chatId = this.ref.chatId;
+    await ChatPreferences.set(ctx, pref);
+  }
+
   async bootstrap(): Promise<void> {
     this.loading = true;
     this.emit();

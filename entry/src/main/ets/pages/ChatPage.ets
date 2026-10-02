@@ -10,6 +10,7 @@ import { KeyboardAvoidMode } from '@kit.ArkUI';
 import { Bubble } from '../ui/chat/Bubble';
 import { ApprovalCard } from '../ui/chat/ApprovalCard';
 import { Composer } from '../ui/chat/Composer';
+import { FullScreenEditor } from '../ui/chat/FullScreenEditor';
 import { AppButton } from '../ui/common/AppButton';
 import { VoiceNote } from '../media/VoiceNote';
 import { AppColor, AppMotion, AppRadius, AppSize, AppSpace, AppType } from '../theme/Theme';
@@ -31,6 +32,8 @@ import { StoreHub } from '../state/StoreHub';
 
 /** Rows the slash menu can take before it crowds out the conversation. */
 const MAX_SLASH_ROWS: number = 6;
+/** A typing pause longer than this flushes the composer draft to disk. */
+const DRAFT_SAVE_MS: number = 800;
 /** Index into the flattened model list, carried as the choice id. */
 const NO_MODEL_OVERRIDE: string = '';
 
@@ -48,6 +51,7 @@ struct ChatPage {
   @State loadingHistory: boolean = true;
   @State uploading: boolean = false;
   @State title: string = '';
+  @State showFullScreenEditor: boolean = false;
   @State generating: boolean = false;
   @State nowSec: number = 0;
   @State commands: SlashCommand[] = [];
@@ -67,6 +71,8 @@ struct ChatPage {
   private voice: VoiceNote = new VoiceNote();
   private recordTick: number = -1;
   private recordStartMs: number = 0;
+  /** Pending debounced draft save; -1 means none is scheduled. */
+  private draftTimer: number = -1;
   private ref: ChatRef = new ChatRef();
   private store: ChatStore | undefined = undefined;
   private pull: () => void = (): void => {};
@@ -125,7 +131,13 @@ struct ChatPage {
   private loadPrefs(store: ChatStore): void {
     const ctx = this.ctx();
     if (ctx !== undefined) {
-      store.restorePrefs(ctx);
+      store.restorePrefs(ctx).then((): void => {
+        // A stored draft only fills a composer the user has not already typed into.
+        const draft = store.prefs().draft;
+        if (this.inputText.length === 0 && draft.length > 0) {
+          this.inputText = draft;
+        }
+      });
     }
   }
 
@@ -513,9 +525,16 @@ struct ChatPage {
   /** Completing a command leaves it as ordinary message text; the server dispatches it. */
   private pickCommand(name: string): void {
     this.inputText = `/${name} `;
+    this.onInputChanged();
+  }
+
+  /** Backgrounding is where a kill can land: whatever the pause missed goes to disk now. */
+  onPageHide(): void {
+    this.flushDraft(this.inputText);
   }
 
   aboutToDisappear(): void {
+    this.flushDraft(this.inputText);
     // A page popped mid-take must not leave the microphone open behind it.
     if (this.recording) {
       this.endRecord(true);
@@ -578,6 +597,32 @@ struct ChatPage {
     }, delay);
   }
 
+  /** Typing is saved on a pause; leaving the page flushes what the pause missed. */
+  private onInputChanged(): void {
+    this.cancelDraftTimer();
+    this.draftTimer = setTimeout((): void => {
+      this.draftTimer = -1;
+      this.flushDraft(this.inputText);
+    }, DRAFT_SAVE_MS);
+  }
+
+  private cancelDraftTimer(): void {
+    if (this.draftTimer >= 0) {
+      clearTimeout(this.draftTimer);
+      this.draftTimer = -1;
+    }
+  }
+
+  /** Fire-and-forget: the write outlives the page, so a pop cannot strand the text. */
+  private flushDraft(text: string): void {
+    this.cancelDraftTimer();
+    const store = this.store;
+    const ctx = this.ctx();
+    if (store !== undefined && ctx !== undefined) {
+      store.saveDraft(ctx, text);
+    }
+  }
+
   private send(): void {
     const store = this.store;
     if (store === undefined) {
@@ -587,6 +632,8 @@ struct ChatPage {
     const files = this.pending;
     this.inputText = '';
     this.pending = [];
+    // The draft dies with the send: the watcher's pending save must not revive it.
+    this.flushDraft('');
     store.send(text, files);
   }
 
@@ -708,7 +755,21 @@ struct ChatPage {
     }
   }
 
+  /**
+   * A back gesture while the full-screen editor is open closes the editor first:
+   * the page stays, so one stray swipe cannot strand a long text mid-composition.
+   */
+  onBackPress(): boolean {
+    if (this.showFullScreenEditor) {
+      this.showFullScreenEditor = false;
+      return true;
+    }
+    this.flushDraft(this.inputText);
+    return false;
+  }
+
   private goBack(): void {
+    this.flushDraft(this.inputText);
     this.getUIContext().getRouter().back();
   }
 
@@ -813,8 +874,24 @@ struct ChatPage {
   }
 
   build() {
-    Column({ space: AppSpace.xxs }) {
-      this.header()
+    if (this.showFullScreenEditor) {
+      FullScreenEditor({
+        text: $inputText,
+        placeholder: Copy.chat_input_placeholder,
+        onSend: (): void => {
+          this.showFullScreenEditor = false;
+          this.send();
+        },
+        onCancel: (): void => {
+          this.showFullScreenEditor = false;
+        },
+        onTextChanged: (): void => {
+          this.onInputChanged();
+        }
+      })
+    } else {
+      Column({ space: AppSpace.xxs }) {
+        this.header()
 
       if (this.loadingHistory) {
         Text(Copy.chat_loading_history)
@@ -910,6 +987,12 @@ struct ChatPage {
         },
         onPickChoice: (key: string, id: string): void => {
           this.pickChoice(key, id);
+        },
+        onLongText: (): void => {
+          this.showFullScreenEditor = true;
+        },
+        onTextChanged: (): void => {
+          this.onInputChanged();
         }
       })
 
@@ -931,5 +1014,6 @@ struct ChatPage {
     .width('100%')
     .height('100%')
     .backgroundColor(AppColor.bg)
+    }
   }
 }

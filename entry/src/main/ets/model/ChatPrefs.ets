@@ -18,6 +18,8 @@ export class ChatPreference {
   loopModeId: string = '';
   /** Kept beside the id so a prefix can be applied without refetching /loops. */
   loopSlash: string = '';
+  /** Unsent composer text: the only copy that survives the page being popped. */
+  draft: string = '';
 
   /** A half-picked slot is worse than none: the server would reject the pair. */
   modelOverride(): ModelSlot | undefined {

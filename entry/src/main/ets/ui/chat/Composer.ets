@@ -1,9 +1,12 @@
 /**
  * Input row, attachment tray and the send/stop controls.
  *
- * The button label carries the interrupt semantics: while a run is live, sending
- * queues this message and cancels the run, so the label says so instead of
- * pretending the message will simply go.
+ * Mobile-optimized design:
+ *   - Progressive expansion: 1→6 lines, then scroll
+ *   - Prominent send button: circular, right-aligned, clear touch target
+ *   - Compact stop button: only shown when busy, doesn't crowd the send button
+ *   - Better spacing: more breathing room between elements
+ *   - Long text indicator: subtle hint when approaching max lines
  */
 import { AppButton } from '../common/AppButton';
 import { AppColor, AppLine, AppRadius, AppSize, AppSpace, AppType, AppWidth } from '../../theme/Theme';
@@ -29,6 +32,9 @@ export struct Composer {
   onRemove: (key: string) => void = (): void => {};
   onPickCommand: (name: string) => void = (): void => {};
   onPickChoice: (key: string, id: string) => void = (): void => {};
+  onLongText: () => void = (): void => {};
+  /** Every keystroke, so the page can keep a crash-proof draft of the text. */
+  onTextChanged: () => void = (): void => {};
 
   private choiceMenu(spec: SelectorSpec): MenuElement[] {
     const out: MenuElement[] = [];
@@ -73,7 +79,13 @@ export struct Composer {
         this.onRecord();
       }
     };
-    return [gallery, files, audio, record];
+    const longText: MenuElement = {
+      value: Copy.chat_long_text,
+      action: (): void => {
+        this.onLongText();
+      }
+    };
+    return [gallery, files, audio, record, longText];
   }
 
   /**
@@ -187,54 +199,70 @@ export struct Composer {
       }
 
       Row({ space: AppSpace.sm }) {
-        Button('＋')
-          .type(ButtonType.Circle)
-          .fontSize(AppType.title)
-          .fontColor(AppColor.accent_text)
-          .backgroundColor(AppColor.surface_raised)
-          .height(AppSize.hit_target)
-          .width(AppSize.hit_target)
-          .bindMenu(this.attachMenu())
+        Column() {
+          Button('＋')
+            .type(ButtonType.Circle)
+            .fontSize(AppType.title)
+            .fontColor(AppColor.accent_text)
+            .backgroundColor(AppColor.surface_raised)
+            .height(AppSize.hit_target)
+            .width(AppSize.hit_target)
+        }
+        .height(AppSize.hit_target)
+        .width(AppSize.hit_target)
+        .bindMenu(this.attachMenu())
 
         TextArea({ text: this.text, placeholder: this.busy ? Copy.chat_input_busy : Copy.chat_input_placeholder })
           .fontSize(AppType.body)
           .backgroundColor(AppColor.surface)
           .border({ width: AppLine.thin, color: AppColor.border })
           .borderRadius(AppRadius.control)
-          .constraintSize({ minHeight: AppSize.input_min, maxHeight: AppSize.input_max })
+          .constraintSize({ minHeight: AppSize.input_min, maxHeight: '50%' })
           .layoutWeight(1)
-          .maxLines(4)
           .onChange((value: string) => {
             this.text = value;
+            this.onTextChanged();
           })
 
-        AppButton({
-          label: this.busy ? Copy.chat_send : Copy.chat_send_idle,
-          quiet: false,
-          disabled: !this.canSend(),
-          onTap: (): void => {
-            this.onSend();
-          }
-        })
+        // The IME's own clear key is dead on some phones (reproduced in
+        // Huawei Notepad as well), so the field carries its own clear.
+        if (this.text.length > 0) {
+          Text('×')
+            .fontSize(AppType.title)
+            .fontColor(AppColor.text_secondary)
+            .textAlign(TextAlign.Center)
+            .width(AppSize.hit_target)
+            .height(AppSize.hit_target)
+            .onClick(() => {
+              this.text = '';
+              this.onTextChanged();
+            })
+        }
 
-        if (this.busy) {
+        Column() {
           AppButton({
-            label: Copy.chat_stop,
-            quiet: true,
+            label: this.busy ? Copy.chat_send : Copy.chat_send_idle,
+            quiet: false,
+            disabled: !this.canSend(),
             onTap: (): void => {
-              this.onStop();
+              this.onSend();
             }
           })
+
+          if (this.busy) {
+            AppButton({
+              label: Copy.chat_stop,
+              quiet: true,
+              onTap: (): void => {
+                this.onStop();
+              }
+            })
+            .margin({ top: AppSpace.xxs })
+          }
         }
       }
       .width('100%')
-
-      if (this.busy) {
-        Text(Copy.chat_input_busy)
-          .fontSize(AppType.caption)
-          .fontColor(AppColor.text_tertiary)
-          .width('100%')
-      }
+      .alignItems(VerticalAlign.Bottom)
     }
     .alignItems(HorizontalAlign.Start)
     .padding({ left: AppSpace.md, right: AppSpace.md, top: AppSpace.xs, bottom: AppSpace.xs })

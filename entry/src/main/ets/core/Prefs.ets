@@ -321,6 +321,7 @@ export class ChatPreferences {
     pref.model = text(stored.model);
     pref.loopModeId = text(stored.loopModeId);
     pref.loopSlash = text(stored.loopSlash);
+    pref.draft = text(stored.draft);
     const level = text(stored.approvalLevel);
     pref.approvalLevel = level.length > 0 && ApprovalLevel.isKnown(level) ? level.toUpperCase() : '';
     return pref;

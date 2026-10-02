@@ -118,12 +118,17 @@ export class Copy {
   static readonly chat_stop: string = '停止';
   static readonly chat_send: string = '发送并插队';
   static readonly chat_send_idle: string = '发送';
+  static readonly cancel: string = '取消';
+  static readonly send: string = '发送';
+  static readonly editor_title: string = '编辑消息';
+  static readonly editor_expand_hint: string = '↗ 展开编辑';
   static readonly chat_queued_hint: string = '排队中 · 点我撤回';
   static readonly chat_attach_gallery: string = '🖼 相册（图片/视频）';
   static readonly chat_attach_files: string = '📄 手机文件';
   static readonly chat_attach_audio: string = '🎵 音频';
   /** Starts a recording; stopping it is the recording bar's job, not this row's. */
   static readonly chat_attach_record: string = '🎙 录一段语音';
+  static readonly chat_long_text: string = '📝 长文本';
   static readonly chat_recording: string = '录音中 %s';
   static readonly chat_rec_stop: string = '停止录音';
   static readonly chat_rec_cancel: string = '丢弃';
