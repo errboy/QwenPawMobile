@@ -328,6 +328,10 @@ export class ChatStore implements RunSink, PollTarget {
       created.text = u.text;
       created.streaming = u.streaming;
       created.imageRef = u.imageUrl;
+      created.videoRef = u.videoUrl;
+      created.audioRef = u.audioUrl;
+      created.fileRef = u.fileUrl;
+      created.fileName = u.fileName;
       this.push(created);
       this.requestImage(created);
       this.emit();
@@ -343,6 +347,16 @@ export class ChatStore implements RunSink, PollTarget {
       held.image = undefined;
       held.imageRequested = false;
       this.requestImage(held);
+    }
+    if (u.videoUrl.length > 0) {
+      held.videoRef = u.videoUrl;
+    }
+    if (u.audioUrl.length > 0) {
+      held.audioRef = u.audioUrl;
+    }
+    if (u.fileUrl.length > 0 || u.fileName.length > 0) {
+      held.fileRef = u.fileUrl;
+      held.fileName = u.fileName;
     }
     this.emit();
   }
@@ -463,8 +477,17 @@ export class ChatStore implements RunSink, PollTarget {
       m.kind = UiKind.TEXT;
       m.text = Parts.displayText(src.content, this.templates);
       m.imageRef = Parts.firstImage(src.content);
+      m.videoRef = Parts.firstVideo(src.content);
+      m.audioRef = Parts.firstAudio(src.content);
+      const file = Parts.firstFile(src.content);
+      if (file !== undefined) {
+        m.fileRef = file.url;
+        m.fileName = file.name;
+      }
     }
-    if (m.text.length === 0 && m.imageRef.length === 0) {
+    if (m.text.length === 0 && m.imageRef.length === 0
+      && m.videoRef.length === 0 && m.audioRef.length === 0
+      && m.fileRef.length === 0 && m.fileName.length === 0) {
       return undefined;
     }
     return m;

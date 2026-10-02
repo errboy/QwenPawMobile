@@ -275,6 +275,9 @@ export class SseFrame {
   data?: DataPayload;
   image_url?: string;
   video_url?: string;
+  audio_url?: string;
+  file_url?: string;
+  file_name?: string;
   content?: ContentPart[];
   output?: ChatMessageModel[];
 }

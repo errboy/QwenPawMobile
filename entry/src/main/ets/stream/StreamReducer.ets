@@ -33,6 +33,10 @@ export class Upsert {
   name: string = '';
   text: string = '';
   imageUrl: string = '';
+  videoUrl: string = '';
+  audioUrl: string = '';
+  fileUrl: string = '';
+  fileName: string = '';
   streaming: boolean = false;
 }
 
@@ -57,6 +61,10 @@ class MsgBuf {
   /** Block index -> accumulated text, so delta=false can replace it. */
   blocks: Map<number, string> = new Map();
   imageUrl: string = '';
+  videoUrl: string = '';
+  audioUrl: string = '';
+  fileUrl: string = '';
+  fileName: string = '';
 }
 
 export class StreamReducer {
@@ -129,6 +137,41 @@ export class StreamReducer {
       out.upserts.push(this.snapshot(msgId, buf, true));
       return;
     }
+    if (type === ContentType.VIDEO) {
+      const url = Parts.str(f.video_url);
+      if (url.length === 0) {
+        return;
+      }
+      const buf = this.bufferFor(msgId);
+      buf.videoUrl = url;
+      out.upserts.push(this.snapshot(msgId, buf, true));
+      return;
+    }
+    if (type === ContentType.AUDIO) {
+      let url = Parts.str(f.audio_url);
+      if (url.length === 0 && typeof f.data === 'string') {
+        url = Parts.str(f.data as string);
+      }
+      if (url.length === 0) {
+        return;
+      }
+      const buf = this.bufferFor(msgId);
+      buf.audioUrl = url;
+      out.upserts.push(this.snapshot(msgId, buf, true));
+      return;
+    }
+    if (type === ContentType.FILE) {
+      const url = Parts.str(f.file_url);
+      const name = Parts.str(f.file_name);
+      if (url.length === 0 && name.length === 0) {
+        return;
+      }
+      const buf = this.bufferFor(msgId);
+      buf.fileUrl = url;
+      buf.fileName = name;
+      out.upserts.push(this.snapshot(msgId, buf, true));
+      return;
+    }
     // `data` parts stream tool arguments one chunk at a time; the completed
     // message frame renders them, so partial JSON never shows up in the UI.
   }
@@ -156,12 +199,30 @@ export class StreamReducer {
     }
     const text = Parts.displayText(f.content, this.templates);
     const image = Parts.firstImage(f.content);
+    const video = Parts.firstVideo(f.content);
+    const audio = Parts.firstAudio(f.content);
+    const file = Parts.firstFile(f.content);
     buf.blocks.clear();
+    buf.imageUrl = '';
+    buf.videoUrl = '';
+    buf.audioUrl = '';
+    buf.fileUrl = '';
+    buf.fileName = '';
     if (text.length > 0) {
       buf.blocks.set(0, text);
     }
     if (image.length > 0) {
       buf.imageUrl = image;
+    }
+    if (video.length > 0) {
+      buf.videoUrl = video;
+    }
+    if (audio.length > 0) {
+      buf.audioUrl = audio;
+    }
+    if (file !== undefined) {
+      buf.fileUrl = file.url;
+      buf.fileName = file.name;
     }
     out.upserts.push(this.snapshot(id, buf, false));
   }
@@ -232,6 +293,10 @@ export class StreamReducer {
     u.kind = buf.kind;
     u.text = StreamReducer.joinBlocks(buf);
     u.imageUrl = buf.imageUrl;
+    u.videoUrl = buf.videoUrl;
+    u.audioUrl = buf.audioUrl;
+    u.fileUrl = buf.fileUrl;
+    u.fileName = buf.fileName;
     u.streaming = streaming;
     return u;
   }

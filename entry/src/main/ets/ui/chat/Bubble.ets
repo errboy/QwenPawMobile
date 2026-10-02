@@ -11,6 +11,7 @@ import { AppColor, AppLine, AppRadius, AppSize, AppSpace, AppType, AppWidth } fr
 import { NoticeTone, UiKind, UiMessage } from '../../state/UiMessage';
 import { Role } from '../../core/Wire';
 import { Copy } from '../../l10n/Copy';
+import { Parts } from '../../model/Parts';
 import { image } from '@kit.ImageKit';
 
 @Component
@@ -58,6 +59,53 @@ export struct Bubble {
     }
   }
 
+  @Builder
+  videoBlock() {
+    if (Parts.isDirectUrl(this.item.videoRef)) {
+      Video({ src: this.item.videoRef, previewUri: '' })
+        .controls(true)
+        .borderRadius(AppRadius.card)
+        .constraintSize({ maxWidth: AppWidth.bubble_max, maxHeight: AppSize.image_max })
+    } else {
+      Text(Copy.chat_video_unavailable)
+        .fontSize(AppType.caption)
+        .fontColor(AppColor.text_tertiary)
+    }
+  }
+
+  @Builder
+  audioBlock() {
+    if (this.item.audioRef.length > 0) {
+      Row({ space: AppSpace.xxs }) {
+        Text(Copy.chat_audio_label)
+          .fontSize(AppType.caption)
+          .fontColor(AppColor.text_secondary)
+      }
+      .backgroundColor(AppColor.surface_subtle)
+      .padding(AppSpace.sm)
+      .borderRadius(AppRadius.card)
+      .constraintSize({ maxWidth: AppWidth.bubble_max })
+    }
+  }
+
+  @Builder
+  fileBlock() {
+    if (this.item.fileRef.length > 0 || this.item.fileName.length > 0) {
+      Row({ space: AppSpace.xxs }) {
+        Text(`📄 ${this.item.fileName.length > 0 ? this.item.fileName : Copy.chat_file_unavailable}`)
+          .fontSize(AppType.caption)
+          .fontColor(AppColor.text_secondary)
+          .maxLines(2)
+          .textOverflow({ overflow: TextOverflow.Ellipsis })
+      }
+      .backgroundColor(AppColor.surface_subtle)
+      .padding(AppSpace.sm)
+      .borderRadius(AppRadius.card)
+      .border({ width: AppLine.thin, color: AppColor.border_subtle })
+      .constraintSize({ maxWidth: AppWidth.bubble_max })
+    }
+  }
+
   build() {
     if (this.item.kind === UiKind.NOTICE) {
       Row() {
@@ -91,6 +139,15 @@ export struct Bubble {
       Column({ space: AppSpace.xxs }) {
         if (this.item.imageRef.length > 0) {
           this.imageBlock()
+        }
+        if (this.item.videoRef.length > 0) {
+          this.videoBlock()
+        }
+        if (this.item.audioRef.length > 0) {
+          this.audioBlock()
+        }
+        if (this.item.fileRef.length > 0 || this.item.fileName.length > 0) {
+          this.fileBlock()
         }
         if (this.item.text.length > 0) {
           Text(this.item.text)
@@ -143,6 +200,15 @@ export struct Bubble {
       Column({ space: AppSpace.xxs }) {
         if (this.item.imageRef.length > 0) {
           this.imageBlock()
+        }
+        if (this.item.videoRef.length > 0) {
+          this.videoBlock()
+        }
+        if (this.item.audioRef.length > 0) {
+          this.audioBlock()
+        }
+        if (this.item.fileRef.length > 0 || this.item.fileName.length > 0) {
+          this.fileBlock()
         }
         if (this.item.text.length > 0) {
           Text(this.item.streaming ? `${this.item.text} ▍` : this.item.text)

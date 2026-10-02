@@ -143,6 +143,11 @@ export class Copy {
   static readonly chat_attachment_line: string = '📎 %s';
   static readonly chat_image_loading: string = '加载图片…';
   static readonly chat_image_unavailable: string = '图片暂不可用';
+  static readonly chat_video_loading: string = '加载视频…';
+  static readonly chat_video_unavailable: string = '视频暂不可用';
+  static readonly chat_audio_label: string = '🎤 语音消息';
+  static readonly chat_audio_unavailable: string = '语音暂不可用';
+  static readonly chat_file_unavailable: string = '文件暂不可用';
   /** Chip label when no loop mode is chosen; the server's default mode has no command. */
   static readonly chat_loop_none: string = '默认模式';
   /** Model label when the phone sends no override, so the PC agent's slot answers. */

@@ -40,4 +40,8 @@ export class UiMessage {
   /** Resolved through MediaLoader; undefined until it lands. */
   image?: MediaValue;
   imageRequested: boolean = false;
+  videoRef: string = '';
+  audioRef: string = '';
+  fileRef: string = '';
+  fileName: string = '';
 }

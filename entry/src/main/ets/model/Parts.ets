@@ -7,6 +7,12 @@
 import { ContentPart, DataPayload } from './Content';
 import { ContentType } from '../core/Wire';
 
+/** A file part's URL and display name, extracted from content parts. */
+export class FileRef {
+  url: string = '';
+  name: string = '';
+}
+
 export class PartTemplates {
   image: string = '[图片]';
   video: string = '[视频]';
@@ -60,6 +66,55 @@ export class Parts {
       }
     }
     return '';
+  }
+
+  static firstVideo(parts: ContentPart[] | undefined): string {
+    if (parts === undefined) {
+      return '';
+    }
+    for (const p of parts) {
+      const url = Parts.str(p.video_url);
+      if (p.type === ContentType.VIDEO && url.length > 0) {
+        return url;
+      }
+    }
+    return '';
+  }
+
+  /** Audio parts carry their stored path or base64 payload in `data`. */
+  static firstAudio(parts: ContentPart[] | undefined): string {
+    if (parts === undefined) {
+      return '';
+    }
+    for (const p of parts) {
+      if (p.type === ContentType.AUDIO && typeof p.data === 'string') {
+        const url = Parts.str(p.data as string);
+        if (url.length > 0) {
+          return url;
+        }
+      }
+    }
+    return '';
+  }
+
+  static firstFile(parts: ContentPart[] | undefined): FileRef | undefined {
+    if (parts === undefined) {
+      return undefined;
+    }
+    for (const p of parts) {
+      if (p.type !== ContentType.FILE) {
+        continue;
+      }
+      const url = Parts.str(p.file_url);
+      const name = Parts.fileName(p);
+      if (url.length > 0 || name.length > 0) {
+        const ref = new FileRef();
+        ref.url = url;
+        ref.name = name;
+        return ref;
+      }
+    }
+    return undefined;
   }
 
   static firstData(parts: ContentPart[] | undefined): DataPayload | undefined {
