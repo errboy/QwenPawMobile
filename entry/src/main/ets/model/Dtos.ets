@@ -61,6 +61,17 @@ export class ChatHistory {
   status: string = 'idle';
 }
 
+/**
+ * Body of POST /chats. The server mints the chat id; the client only names the
+ * session, which is exactly what the web console's "new chat" sends.
+ */
+export class NewChatRequest {
+  session_id: string = '';
+  user_id: string = 'default';
+  channel: string = 'console';
+  name: string = '';
+}
+
 export class ChatMessageModel {
   id: string = '';
   type: string = 'message';

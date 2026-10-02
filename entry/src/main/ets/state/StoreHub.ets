@@ -82,6 +82,24 @@ export class StoreHub {
     return this.chatStores.get(chatId);
   }
 
+  /**
+   * Open a fresh window and make it the foreground one at once. The session key is
+   * named here — like the web console does — but the chat id comes back from the
+   * server, so a phone window stays addressable by approvals exactly as a PC one.
+   */
+  async newChat(ctx: common.Context, name: string): Promise<ChatRef> {
+    const sessionId: string = `${Date.now()}-${Math.floor(Math.random() * 1000000)}`;
+    const spec = await this.chatApi.create(name, sessionId);
+    const ref = new ChatRef();
+    ref.chatId = spec.id;
+    ref.sessionId = spec.session_id;
+    ref.userId = spec.user_id;
+    ref.title = spec.name;
+    await this.app.openChat(ctx, ref);
+    this.poller.poke();
+    return ref;
+  }
+
   /** A window deleted on the PC: throw its store away, streams included. */
   forgetChat(chatId: string): void {
     const store = this.chatStores.get(chatId);

@@ -2,15 +2,15 @@
   "string": [
     {
       "name": "module_desc",
-      "value": "module description"
+      "value": "QwenPaw 手机端主模块"
     },
     {
       "name": "EntryAbility_desc",
-      "value": "description"
+      "value": "直连局域网电脑上的 QwenPaw，进行对话、附件与语音消息"
     },
     {
       "name": "EntryAbility_label",
-      "value": "label"
+      "value": "QwenPaw"
     },
     {
       "name": "microphone_reason",

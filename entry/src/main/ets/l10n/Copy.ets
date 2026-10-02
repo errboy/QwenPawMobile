@@ -76,17 +76,25 @@ export class Copy {
   static readonly home_user_line: string = '用户: %s';
   static readonly home_no_auth_user: string = '(无认证)';
   static readonly home_agent_label: string = '智能体';
-  static readonly home_foreground_badge: string = '▶ 前台会话';
-  static readonly home_foreground_hint: string = '与电脑端共享同一窗口 · 打开后接着上次聊';
+  static readonly home_foreground_badge: string = '▶ 主会话';
+  static readonly home_foreground_hint: string = '默认是你上次使用的会话 · 长按其他会话可切换';
   static readonly home_resume: string = '继续 ›';
   static readonly home_running_chip: string = '⏳ 进行中';
   static readonly home_approvals: string = '🔒 %d 项待审批';
   static readonly home_bg_running: string = '⏳ %d 个会话进行中';
+  /** Phone-side view switch: hide every window but the main one. */
+  static readonly home_only_main: string = '只看主会话';
+  static readonly home_show_all: string = '显示全部会话';
+  static readonly home_collapsed_hint: string = '已收起 %d 个会话';
   static readonly home_loading: string = '加载会话列表…';
-  static readonly home_empty: string = '暂无会话。在电脑端 Console 发起对话后，这里会同步显示。';
+  static readonly home_empty: string = '暂无会话。点下方“新建会话”，或在电脑端 Console 发起对话后同步到这里。';
   static readonly home_offline: string = '⚠ 无法连接服务器，列表可能已过期';
   static readonly home_refresh: string = '刷新会话列表';
   static readonly home_group_console: string = '控制台会话';
+  /** Start a window from the phone; the server still mints its id. */
+  static readonly home_new_chat: string = '新建会话';
+  static readonly chat_new_title: string = '新会话';
+  static readonly notice_new_chat_failed: string = '新建会话失败：%s';
   static readonly home_group_wechat: string = '微信机器人';
   static readonly home_group_feishu: string = '飞书机器人';
   static readonly home_group_other: string = '其他渠道';

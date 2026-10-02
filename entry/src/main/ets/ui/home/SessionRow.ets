@@ -67,6 +67,8 @@ export struct ForegroundCard {
 export struct SessionRow {
   @Prop chat: ChatSpec;
   onOpen: (chat: ChatSpec) => void = (): void => {};
+  /** Promote this window to the main one without opening it. */
+  onPin: (chat: ChatSpec) => void = (): void => {};
 
   private running(): boolean {
     return this.chat.status === ChatStatus.RUNNING;
@@ -111,5 +113,8 @@ export struct SessionRow {
     .onClick(() => {
       this.onOpen(this.chat);
     })
+    .gesture(LongPressGesture({ duration: 500 }).onAction((): void => {
+      this.onPin(this.chat);
+    }))
   }
 }

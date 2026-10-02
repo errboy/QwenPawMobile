@@ -28,6 +28,8 @@ class Key {
   static readonly SCAN_PORT: string = 'scan_port';
   /** Composer choices per chat: approval level, model slot, loop mode. */
   static readonly CHAT_PREFS: string = 'chat_prefs';
+  /** Home view switch: show only the main window. Device-level, like the theme. */
+  static readonly HOME_COMPACT: string = 'home_compact';
 }
 
 export class Prefs {
@@ -56,6 +58,40 @@ export class Prefs {
     await db.delete(key);
     await db.flush();
   }
+}
+
+/**
+ * Two phone-side facts make the server part of these keys: chat ids are only
+ * unique *within* a backend (a mock replaying real ids collided with the real
+ * server's stored overrides), and the "last chat" pointer must not resurrect a
+ * window the newly selected server has never heard of.
+ */
+async function scopedKey(ctx: common.Context, base: string): Promise<string> {
+  const server = text(await Prefs.read(ctx, Key.SERVER, ''));
+  return server.length > 0 ? `${base}#${server}` : base;
+}
+
+/** Reads the scoped entry, promoting a pre-scoping value once per server. */
+async function readScoped(ctx: common.Context, base: string): Promise<string> {
+  const key = await scopedKey(ctx, base);
+  const value = text(await Prefs.read(ctx, key, ''));
+  if (value.length > 0 || key === base) {
+    return value;
+  }
+  const legacy = text(await Prefs.read(ctx, base, ''));
+  if (legacy.length > 0) {
+    await Prefs.write(ctx, key, legacy);
+    await Prefs.erase(ctx, base);
+  }
+  return legacy;
+}
+
+async function writeScoped(ctx: common.Context, base: string, value: string): Promise<void> {
+  await Prefs.write(ctx, await scopedKey(ctx, base), value);
+}
+
+async function eraseScoped(ctx: common.Context, base: string): Promise<void> {
+  await Prefs.erase(ctx, await scopedKey(ctx, base));
 }
 
 function isFilled(value: string | undefined): boolean {
@@ -119,6 +155,18 @@ export class Settings {
     await Prefs.write(ctx, Key.THEME_MODE, mode);
   }
 
+  /**
+   * Home view switch: only the main window is listed. UI-only, so the poller
+   * keeps reading every chat exactly as before.
+   */
+  static async homeCompact(ctx: common.Context): Promise<boolean> {
+    return (await Prefs.read(ctx, Key.HOME_COMPACT, '')) === '1';
+  }
+
+  static async saveHomeCompact(ctx: common.Context, compact: boolean): Promise<void> {
+    await Prefs.write(ctx, Key.HOME_COMPACT, compact ? '1' : '0');
+  }
+
   // ---------- login configuration ----------
   //
   // These keys are what the settings page edits and what the login page signs in
@@ -179,15 +227,15 @@ export class Settings {
   }
 
   static async saveLastChat(ctx: common.Context, ref: ChatRef): Promise<void> {
-    await Prefs.write(ctx, Key.LAST_CHAT, JSON.stringify(ref));
+    await writeScoped(ctx, Key.LAST_CHAT, JSON.stringify(ref));
   }
 
   static async clearLastChat(ctx: common.Context): Promise<void> {
-    await Prefs.erase(ctx, Key.LAST_CHAT);
+    await eraseScoped(ctx, Key.LAST_CHAT);
   }
 
   static async loadLastChat(ctx: common.Context): Promise<ChatRef | undefined> {
-    const raw = await Prefs.read(ctx, Key.LAST_CHAT, '');
+    const raw = await readScoped(ctx, Key.LAST_CHAT);
     if (!isFilled(raw)) {
       return undefined;
     }
@@ -203,8 +251,10 @@ export class Settings {
   static async clearSession(ctx: common.Context): Promise<void> {
     await Prefs.erase(ctx, Key.TOKEN);
     await Prefs.erase(ctx, Key.USERNAME);
-    await Prefs.erase(ctx, Key.LAST_CHAT);
     await Prefs.erase(ctx, Key.SIGNED_IN);
+    // Reads go through the scoped key, so the raw pointer has to be cleared too.
+    await Settings.clearLastChat(ctx);
+    await Prefs.erase(ctx, Key.LAST_CHAT);
   }
 }
 
@@ -234,11 +284,11 @@ export class ChatPreferences {
     const kept = (await ChatPreferences.read(ctx)).filter((p: ChatPreference): boolean =>
       p.chatId !== pref.chatId);
     kept.push(pref);
-    await Prefs.write(ctx, Key.CHAT_PREFS, JSON.stringify(kept.slice(-MAX_CHAT_PREFS)));
+    await writeScoped(ctx, Key.CHAT_PREFS, JSON.stringify(kept.slice(-MAX_CHAT_PREFS)));
   }
 
   private static async read(ctx: common.Context): Promise<ChatPreference[]> {
-    const raw = await Prefs.read(ctx, Key.CHAT_PREFS, '');
+    const raw = await readScoped(ctx, Key.CHAT_PREFS);
     if (!isFilled(raw)) {
       return [];
     }

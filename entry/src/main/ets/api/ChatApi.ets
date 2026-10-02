@@ -6,7 +6,7 @@
 import { ApiClient } from '../net/ApiClient';
 import { SseHandler, SseSession } from '../net/SseSession';
 import { Failure } from '../core/Failure';
-import { AgentRequest, ChatHistory, ChatSpec, OutgoingMessage, RequestPart, UploadResult } from '../model/Dtos';
+import { AgentRequest, ChatHistory, ChatSpec, NewChatRequest, OutgoingMessage, RequestPart, UploadResult } from '../model/Dtos';
 import { ChatPreference } from '../model/ChatPrefs';
 import { ApiPath, ContentType } from '../core/Wire';
 
@@ -22,6 +22,23 @@ export class ChatApi {
     const raw = await this.client.get(ApiPath.CHATS);
     const parsed = JSON.parse(raw) as ChatSpec[];
     return parsed === undefined ? [] : parsed;
+  }
+
+  /**
+   * POST /chats — start a window from the phone. The server generates the chat
+   * UUID; the client supplies only the session key, so approvals and runs stay
+   * addressable exactly as they are for a window created on the PC.
+   */
+  async create(name: string, sessionId: string): Promise<ChatSpec> {
+    const body = new NewChatRequest();
+    body.session_id = sessionId;
+    body.name = name;
+    const raw = await this.client.post(ApiPath.CHATS, JSON.stringify(body));
+    const parsed = JSON.parse(raw) as ChatSpec;
+    if (parsed === undefined || parsed.id === undefined || parsed.id.length === 0) {
+      throw Failure.parse('新建会话响应缺少 id');
+    }
+    return parsed;
   }
 
   async history(chatId: string): Promise<ChatHistory> {

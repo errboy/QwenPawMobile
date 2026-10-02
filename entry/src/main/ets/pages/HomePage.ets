@@ -13,6 +13,8 @@ import { AppColor, AppLine, AppRadius, AppSpace, AppType } from '../theme/Theme'
 import { ThemeManager, ThemeMode } from '../theme/ThemeManager';
 import { Copy } from '../l10n/Copy';
 import { AgentSummary, ChatRef, ChatSpec } from '../model/Dtos';
+import { Failure } from '../core/Failure';
+import { Settings } from '../core/Prefs';
 import { StoreHub } from '../state/StoreHub';
 
 @Entry
@@ -30,6 +32,11 @@ struct HomePage {
   @State foreground: ChatSpec = new ChatSpec();
   @State themeName: string = '';
   @State expanded: string[] = [];
+  /** Hide every window but the main one. Nothing here stops the poller. */
+  @State compact: boolean = false;
+  /** A create is in flight; the button must not start a second window. */
+  @State creating: boolean = false;
+  @State notice: string = '';
   /** Created once so detach can identify the same closure. */
   private pull: () => void = (): void => {};
   private jumped: boolean = false;
@@ -46,6 +53,12 @@ struct HomePage {
     this.pull = (): void => {
       this.sync();
     };
+    const ctx = this.ctx();
+    if (ctx !== undefined) {
+      Settings.homeCompact(ctx).then((compact: boolean): void => {
+        this.compact = compact;
+      });
+    }
     this.hub().app.attachView(this.pull);
     this.sync();
     this.hub().poller.poke();
@@ -115,6 +128,19 @@ struct HomePage {
       : this.expanded.concat([key]);
   }
 
+  /**
+   * Compact mode hides every window but the main one. The poller keeps reading
+   * every chat, so background runs and pending approvals stay visible in the
+   * badge counts — collapsing is UI-only, never a subscription change.
+   */
+  private hidingGroups(): boolean {
+    return this.compact && this.foregroundId.length > 0;
+  }
+
+  private hiddenCount(): number {
+    return this.hidingGroups() ? Math.max(0, this.chats.length - 1) : 0;
+  }
+
   private agentOptions(): SelectOption[] {
     const out: SelectOption[] = [];
     for (const a of this.agents) {
@@ -174,6 +200,58 @@ struct HomePage {
       this.hub().app.openChat(ctx, ref);
     }
     this.getUIContext().getRouter().pushUrl({ url: 'pages/ChatPage', params: ref });
+  }
+
+  /**
+   * Start a window from the phone instead of the PC. The hub already made it the
+   * foreground one, so the last thing the user touched is what opens next time.
+   */
+  private createChat(): void {
+    const ctx = this.ctx();
+    if (ctx === undefined || this.creating) {
+      return;
+    }
+    this.creating = true;
+    this.notice = '';
+    this.hub().newChat(ctx, Copy.chat_new_title)
+      .then((ref: ChatRef): void => {
+        this.creating = false;
+        this.getUIContext().getRouter().pushUrl({ url: 'pages/ChatPage', params: ref });
+      })
+      .catch((err: Object): void => {
+        this.creating = false;
+        this.notice = Copy.fill(Copy.notice_new_chat_failed, Failure.from(err).message);
+      });
+  }
+
+  /**
+   * Toggle the compact view. Nothing here stops the poller, so background runs
+   * and pending approvals stay visible in the badge counts.
+   */
+  private toggleCompact(): void {
+    const ctx = this.ctx();
+    if (ctx === undefined) {
+      return;
+    }
+    this.compact = !this.compact;
+    Settings.saveHomeCompact(ctx, this.compact);
+  }
+
+  /**
+   * Promote a chat to the main one without navigating to it. The foreground card
+   * updates immediately because the store emits a view refresh.
+   */
+  private pinMain(chat: ChatSpec): void {
+    const ctx = this.ctx();
+    if (ctx === undefined) {
+      return;
+    }
+    const ref = new ChatRef();
+    ref.chatId = chat.id;
+    ref.sessionId = chat.session_id;
+    ref.userId = chat.user_id;
+    ref.title = chat.name;
+    this.hub().app.openChat(ctx, ref);
   }
 
   private cycleTheme(): void {
@@ -285,6 +363,34 @@ struct HomePage {
     .padding({ top: AppSpace.lg })
   }
 
+  /**
+   * The compact toggle: a quiet bar that reads as a section header. When compact
+   * is on, it also shows how many chats are hidden so the user knows the list
+   * is not empty.
+   */
+  @Builder
+  viewBar() {
+    Row({ space: AppSpace.xs }) {
+      Text(this.compact ? Copy.home_show_all : Copy.home_only_main)
+        .fontSize(AppType.caption)
+        .fontColor(AppColor.accent_text)
+      Blank()
+      if (this.compact) {
+        Text(Copy.fillN(Copy.home_collapsed_hint, this.hiddenCount()))
+          .fontSize(AppType.caption)
+          .fontColor(AppColor.text_tertiary)
+      }
+    }
+    .width('100%')
+    .padding(AppSpace.sm)
+    .backgroundColor(AppColor.surface_subtle)
+    .border({ width: AppLine.thin, color: AppColor.border_subtle })
+    .borderRadius(AppRadius.row)
+    .onClick(() => {
+      this.toggleCompact();
+    })
+  }
+
   @Builder
   groupHeader(group: ChannelGroup) {
     Row({ space: AppSpace.xs }) {
@@ -334,43 +440,77 @@ struct HomePage {
               })
             }
             .margin({ bottom: AppSpace.sm })
-          }
-          ForEach(ChannelGroups.all(), (group: ChannelGroup) => {
-            if (this.chatsOf(group).length > 0) {
-              ListItem() {
-                this.groupHeader(group)
-              }
-              .margin({ bottom: AppSpace.xs })
-              if (this.isExpanded(group.key)) {
-                ForEach(this.chatsOf(group), (chat: ChatSpec) => {
-                  ListItem() {
-                    SessionRow({
-                      chat: chat,
-                      onOpen: (target: ChatSpec): void => {
-                        this.openChat(target);
-                      }
-                    })
-                  }
-                  .margin({ bottom: AppSpace.xs })
-                }, (chat: ChatSpec): string => `${chat.id}_${chat.status}`)
-              }
+            ListItem() {
+              this.viewBar()
             }
-          }, (group: ChannelGroup): string => group.key)
+            .margin({ bottom: AppSpace.xs })
+          }
+          if (!this.hidingGroups()) {
+            ForEach(ChannelGroups.all(), (group: ChannelGroup) => {
+              if (this.chatsOf(group).length > 0) {
+                ListItem() {
+                  this.groupHeader(group)
+                }
+                .margin({ bottom: AppSpace.xs })
+                if (this.isExpanded(group.key)) {
+                  ForEach(this.chatsOf(group), (chat: ChatSpec) => {
+                    ListItem() {
+                      SessionRow({
+                        chat: chat,
+                        onOpen: (target: ChatSpec): void => {
+                          this.openChat(target);
+                        },
+                        onPin: (target: ChatSpec): void => {
+                          this.pinMain(target);
+                        }
+                      })
+                    }
+                    .margin({ bottom: AppSpace.xs })
+                  }, (chat: ChatSpec): string => `${chat.id}_${chat.status}`)
+                }
+              }
+            }, (group: ChannelGroup): string => group.key)
+          }
         }
         .width('100%')
         .layoutWeight(1)
         .scrollBar(BarState.Off)
       }
 
-      AppButton({
-        label: Copy.home_refresh,
-        quiet: true,
-        grow: true,
-        onTap: (): void => {
-          this.hub().app.refreshAgents();
-          this.hub().poller.poke();
+      if (this.notice.length > 0) {
+        Text(this.notice)
+          .fontSize(AppType.caption)
+          .fontColor(AppColor.error_text)
+          .width('100%')
+      }
+
+      Row({ space: AppSpace.sm }) {
+        Column() {
+          AppButton({
+            label: Copy.home_new_chat,
+            grow: true,
+            disabled: this.creating,
+            onTap: (): void => {
+              this.createChat();
+            }
+          })
         }
-      })
+        .layoutWeight(1)
+        Column() {
+          AppButton({
+            label: Copy.home_refresh,
+            quiet: true,
+            grow: true,
+            onTap: (): void => {
+              this.hub().app.refreshAgents();
+              this.hub().poller.poke();
+            }
+          })
+        }
+        .layoutWeight(1)
+      }
+      .width('100%')
+      .alignItems(VerticalAlign.Center)
     }
     .alignItems(HorizontalAlign.Start)
     .padding({ left: AppSpace.lg, right: AppSpace.lg, bottom: AppSpace.lg })
