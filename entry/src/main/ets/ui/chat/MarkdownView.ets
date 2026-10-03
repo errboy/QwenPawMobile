@@ -1,10 +1,12 @@
 /**
  * Markdown blocks rendered as one chat bubble body.
  *
- * Parsing is memoised on the source string. A streaming reply rewrites the whole
- * text on every frame, and without the cache a long answer would re-tokenise itself
- * hundreds of times per message; with it, only the block that grew is rebuilt,
- * because the ForEach key carries that block's own length.
+ * Parsing is memoised on the source string plus the streaming flag. A streaming
+ * reply rewrites the whole text on every frame, and without the cache a long answer
+ * would re-tokenise itself hundreds of times per message; with it, only the block
+ * that grew is rebuilt, because the ForEach key carries that block's own length.
+ * The flag is part of the key because the caret is baked into the cached blocks: a
+ * run that ends without changing the text has to drop it.
  *
  * The bubble's own background, padding and border stay in Bubble: this component
  * only ever sizes to its content, so a short reply is still a short bubble.
@@ -19,11 +21,13 @@ export struct MarkdownView {
   bodySize: Resource = AppType.message;
   tint: Resource = AppColor.text;
   private blocks: MdBlock[] = [];
-  private parsed: string = '\u0000';
+  private parsedSrc: string = '\u0000';
+  private parsedLive: boolean = false;
 
   private model(): MdBlock[] {
-    if (this.parsed !== this.src) {
-      this.parsed = this.src;
+    if (this.parsedSrc !== this.src || this.parsedLive !== this.streaming) {
+      this.parsedSrc = this.src;
+      this.parsedLive = this.streaming;
       this.blocks = Markdown.parse(this.src);
       if (this.streaming) {
         this.addCaret();
