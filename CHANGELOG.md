@@ -46,7 +46,7 @@
 - 分层应用图标（独立设计的蛋壳 + Q 前景，橙色渐变背景）。
 - `tools/qp-gate`：单文件 Python 守门代理，让只绑回环的桌面端安全暴露给局域网；
   自演鉴权面、PBKDF2 口令、HMAC 令牌、CIDR 白名单、登录限流、上游端口自动发现；
-  配套 `selftest.py` 37 项自检（自带桩上游，不依赖桌面端）。
+  配套 `selftest.py` 40 项自检（自带桩上游，不依赖桌面端）。
 
 ### Changed
 - 签名口令从 `build-profile.json5` 外置到被 git 忽略的 `external-signing-config.json`，

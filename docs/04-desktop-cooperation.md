@@ -39,7 +39,7 @@ tools\qp-gate\start.bat        :: 首次运行会引导设账号口令，再启�
 ```bat
 python tools\qp-gate\qp_gate.py --init    :: 设手机端登录用的账号口令 + 放行防火墙
 python tools\qp-gate\qp_gate.py           :: 启动
-python tools\qp-gate\selftest.py          :: 37 项自检，自带桩上游，不碰真实配置
+python tools\qp-gate\selftest.py          :: 40 项自检，自带桩上游，不碰真实配置
 ```
 
 手机端登录页把扫描端口填 `61700`，扫出来的那台机器就是它，账号口令填 `--init` 里设的。

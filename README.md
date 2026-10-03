@@ -33,7 +33,7 @@ entry/src/main/ets/
   theme/    设计 token（颜色/字号/宽度/动效）+ 深色与系统字号跟随
   l10n/     全部用户可见文案（页面里不出现硬编码中文）
   ui/ pages/组件与三个页面
-tools/qp-gate/                守门代理 + 37 项自检
+tools/qp-gate/                守门代理 + 40 项自检
 docs/                         下面的文档
 ```
 

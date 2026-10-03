@@ -17,7 +17,7 @@ devecocli check lint          # 规约
 devecocli build               # 干净克隆、无证书也应成功
 devecocli device list         # 序列号；多台设备时所有设备命令必须显式 --device
 devecocli run --device <序列号>
-python tools/qp-gate/selftest.py   # 改过 qp_gate.py 必跑，37 项
+python tools/qp-gate/selftest.py   # 改过 qp_gate.py 必跑，40 项
 ```
 
 给用户的命令请写成**可直接整行粘贴的绝对路径单行**，不要拆成"先 cd 再执行"的多段。

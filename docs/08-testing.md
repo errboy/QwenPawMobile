@@ -7,7 +7,7 @@
 | `devecocli check arkts --fix` | 秒级 | 绝大多数 ArkTS 类型/语法错误，比全量构建快得多。**每轮改完跑一次即可，不要每个 edit 跑** |
 | `devecocli check lint` | 秒级 | 代码规约，规则档位见 `code-linter.json5` |
 | `devecocli build` | 分钟级 | 真链接：资源引用、`$media:`/`$string:` 缺失在这里才暴露 |
-| `python tools/qp-gate/selftest.py` | 秒级 | 网关侧 37 项，见 §3 |
+| `python tools/qp-gate/selftest.py` | 秒级 | 网关侧 40 项，见 §3 |
 
 ArkTS 比 TS 严：`any`/`unknown` 不允许，对象字面量要有形状，`struct` 的字段初始化是强制的。
 `--fix` 能补 `export` 这类高置信度问题，补不了的先看它报的行号。
