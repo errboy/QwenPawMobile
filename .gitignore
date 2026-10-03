@@ -14,3 +14,6 @@
 # Machine-local signing material: keystore paths plus the passwords that only
 # decrypt on this machine. hvigorfile.ts folds it into the build profile.
 /external-signing-config.json
+
+# Screenshots and response dumps taken while driving the UI on a device.
+/screenshots/
