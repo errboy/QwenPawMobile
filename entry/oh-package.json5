@@ -1,10 +1,10 @@
 {
   "name": "entry",
   "version": "1.0.0",
-  "description": "Please describe the basic information.",
+  "description": "HarmonyOS client that drives a QwenPaw desktop backend over the LAN.",
   "main": "",
   "author": "",
-  "license": "",
+  "license": "Apache-2.0",
   "dependencies": {}
 }
 

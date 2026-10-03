@@ -1,6 +1,6 @@
 {
   "modelVersion": "6.0.0",
-  "description": "Please describe the basic information.",
+  "description": "HarmonyOS client that drives a QwenPaw desktop backend over the LAN.",
   "dependencies": {
   },
   "devDependencies": {
