@@ -23,9 +23,11 @@ import { LoopModes } from '../model/LoopModes';
 import { ModelOption, Providers } from '../model/Providers';
 import { Parts } from '../model/Parts';
 import { ApprovalLevel, Role } from '../core/Wire';
+import { image } from '@kit.ImageKit';
 import { Failure } from '../core/Failure';
 import { Log } from '../core/Log';
 import { UiMessage } from '../state/UiMessage';
+import { MediaValue } from '../media/MediaLoader';
 import { ChatStore } from '../state/ChatStore';
 import { RunPhase } from '../stream/RunController';
 import { StoreHub } from '../state/StoreHub';
@@ -54,6 +56,11 @@ struct ChatPage {
   @State uploading: boolean = false;
   @State title: string = '';
   @State showFullScreenEditor: boolean = false;
+  /**
+   * The image the user tapped, held as its own value so the viewer survives a
+   * history resync that replaces the bubble it came from.
+   */
+  @State zoom: MediaValue = new MediaValue();
   @State generating: boolean = false;
   @State nowSec: number = 0;
   @State commands: SlashCommand[] = [];
@@ -532,6 +539,14 @@ struct ChatPage {
   /** Backgrounding is where a kill can land: whatever the pause missed goes to disk now. */
   onPageHide(): void {
     this.flushDraft(this.inputText);
+    this.stopAudio();
+  }
+
+  private stopAudio(): void {
+    const store = this.store;
+    if (store !== undefined) {
+      store.stopAudio();
+    }
   }
 
   aboutToDisappear(): void {
@@ -544,6 +559,8 @@ struct ChatPage {
     if (store === undefined) {
       return;
     }
+    // Nor a voice note that outlived the window it came from.
+    store.stopAudio();
     // The store itself stays in the hub: a run started here must survive the pop.
     this.hub().poller.unregister(store);
     store.detachView(this.pull);
@@ -756,13 +773,57 @@ struct ChatPage {
     }
   }
 
+  private itemAt(key: string): UiMessage | undefined {
+    for (const m of this.items) {
+      if (m.key === key) {
+        return m;
+      }
+    }
+    return undefined;
+  }
+
+  /** Only a decoded image is worth a full screen; a broken one stays a caption. */
+  private openZoom(key: string): void {
+    const m = this.itemAt(key);
+    const value = m === undefined ? undefined : m.image;
+    if (value === undefined || value.failed || value.isEmpty()) {
+      return;
+    }
+    this.zoom = value;
+  }
+
+  private zoomOpen(): boolean {
+    return !this.zoom.isEmpty() && !this.zoom.failed;
+  }
+
+  private zoomSource(): image.PixelMap | string {
+    return this.zoom.map === undefined ? this.zoom.url : this.zoom.map;
+  }
+
+  private closeZoom(): void {
+    this.zoom = new MediaValue();
+  }
+
+  private toggleAudio(key: string): void {
+    const store = this.store;
+    const m = this.itemAt(key);
+    if (store !== undefined && m !== undefined) {
+      store.playAudio(m);
+    }
+  }
+
   /**
-   * A back gesture while the full-screen editor is open closes the editor first:
-   * the page stays, so one stray swipe cannot strand a long text mid-composition.
+   * A back gesture closes the topmost layer it finds: the editor, then a zoomed
+   * image. The page stays, so one stray swipe cannot strand a long text
+   * mid-composition or drop the user out of the chat they were reading.
    */
   onBackPress(): boolean {
     if (this.showFullScreenEditor) {
       this.showFullScreenEditor = false;
+      return true;
+    }
+    if (this.zoomOpen()) {
+      this.closeZoom();
       return true;
     }
     this.flushDraft(this.inputText);
@@ -865,6 +926,12 @@ struct ChatPage {
         item: item,
         onRecall: (key: string): void => {
           this.recall(key);
+        },
+        onZoomImage: (key: string): void => {
+          this.openZoom(key);
+        },
+        onToggleAudio: (key: string): void => {
+          this.toggleAudio(key);
         }
       })
       if (item.role !== Role.USER) {
@@ -872,6 +939,32 @@ struct ChatPage {
       }
     }
     .width('100%')
+  }
+
+  /**
+   * Full-screen image. The bytes are already decoded, so this costs no second
+   * fetch, and the whole surface is the close gesture: a phone holding a photo
+   * open with one hand has no other control to reach.
+   */
+  @Builder
+  zoomViewer() {
+    Column({ space: AppSpace.sm }) {
+      Text(Copy.chat_zoom_close)
+        .fontSize(AppType.caption)
+        .fontColor(AppColor.text_inverse)
+      Image(this.zoomSource())
+        .objectFit(ImageFit.Contain)
+        .width('100%')
+        .layoutWeight(1)
+    }
+    .alignItems(HorizontalAlign.Center)
+    .width('100%')
+    .height('100%')
+    .padding({ left: AppSpace.md, right: AppSpace.md, top: AppSpace.lg, bottom: AppSpace.lg })
+    .backgroundColor(AppColor.scrim)
+    .onClick(() => {
+      this.closeZoom();
+    })
   }
 
   build() {
@@ -890,6 +983,8 @@ struct ChatPage {
           this.onInputChanged();
         }
       })
+    } else if (this.zoomOpen()) {
+      this.zoomViewer()
     } else {
       Column({ space: AppSpace.xxs }) {
         this.header()

@@ -26,6 +26,8 @@ export class AppColor {
   static readonly surface_raised: Resource = $r('app.color.app_surface_raised');
   static readonly surface_sunken: Resource = $r('app.color.app_surface_sunken');
   static readonly shell_bg: Resource = $r('app.color.app_shell_bg');
+  /** Backdrop behind a full-screen image; white text on it reads in both themes. */
+  static readonly scrim: Resource = $r('app.color.app_scrim');
 
   static readonly fill_strong: Resource = $r('app.color.app_fill_strong');
   static readonly fill: Resource = $r('app.color.app_fill');
@@ -116,6 +118,9 @@ export class AppSize {
   static readonly input_min: Resource = $r('app.float.app_input_min_height');
   static readonly input_max: Resource = $r('app.float.app_input_max_height');
   static readonly image_max: Resource = $r('app.float.app_image_max_height');
+  /** 220vp x 16/9. Keeps a video box from turning into a wide black frame with
+   * side bars on a tablet or an unfolded widefold. */
+  static readonly video_max: Resource = $r('app.float.app_video_max_width');
   static readonly tool_max: Resource = $r('app.float.app_tool_collapsed_height');
 }
 

@@ -30,10 +30,15 @@ Provider 凭据在 `~/.qwenpaw.secret`，本工程不读它、也不该读它。
 
 也正因为如此，**`netsh portproxy` 不能用**：它同样把来源伪装成回环，等于把鉴权一起绕掉。
 
-上手三条命令（Windows，工程根目录下）：
+上手一条命令就够了（Windows，工程根目录下）。`start.bat` 自己找可用的 Python 3，
+参数决定它干什么：
 
 ```bat
-tools\qp-gate\start.bat        :: 首次运行会引导设账号口令，再启动
+tools\qp-gate\start.bat                 :: 启动；gate.json 不存在时先引导设账号口令
+tools\qp-gate\start.bat password        :: 换手机端登录的用户名与口令
+tools\qp-gate\start.bat discover        :: 只看探测到的上游端口
+tools\qp-gate\start.bat check           :: 40 项自检，自带桩上游，不碰真实配置
+tools\qp-gate\start.bat help            :: 列出全部命令
 ```
 
 ```bat
@@ -41,6 +46,10 @@ python tools\qp-gate\qp_gate.py --init    :: 设手机端登录用的账号口�
 python tools\qp-gate\qp_gate.py           :: 启动
 python tools\qp-gate\selftest.py          :: 40 项自检，自带桩上游，不碰真实配置
 ```
+
+**换口令用 `start.bat password`，别用 `--init --force`**：后者会重新生成 `token_secret`，
+把手机端已签发的令牌全部作废；而且口令只能交互输入，不会进命令行、也就不会留在
+进程列表和 shell 历史里。
 
 手机端登录页把扫描端口填 `61700`，扫出来的那台机器就是它，账号口令填 `--init` 里设的。
 

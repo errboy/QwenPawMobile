@@ -287,6 +287,28 @@ export class ChatPreferences {
     await writeScoped(ctx, Key.CHAT_PREFS, JSON.stringify(kept.slice(-MAX_CHAT_PREFS)));
   }
 
+  /**
+   * Chats on this server whose composer still holds unsent text. It is the number
+   * a cleanup has to tell the user about, so drafts are counted rather than the
+   * whole preference table, which also carries model and approval choices.
+   */
+  static async draftCount(ctx: common.Context): Promise<number> {
+    let count: number = 0;
+    for (const pref of await ChatPreferences.read(ctx)) {
+      if (pref.draft.length > 0) {
+        count += 1;
+      }
+    }
+    return count;
+  }
+
+  /** Drop this server's stored choices and drafts. The transcript is not here. */
+  static async clearAll(ctx: common.Context): Promise<void> {
+    await eraseScoped(ctx, Key.CHAT_PREFS);
+    // readScoped promotes a pre-scoping entry once; the legacy key goes too.
+    await Prefs.erase(ctx, Key.CHAT_PREFS);
+  }
+
   private static async read(ctx: common.Context): Promise<ChatPreference[]> {
     const raw = await readScoped(ctx, Key.CHAT_PREFS);
     if (!isFilled(raw)) {

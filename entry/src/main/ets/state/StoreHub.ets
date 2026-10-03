@@ -14,9 +14,11 @@ import { ChatApi } from '../api/ChatApi';
 import { ComposerApi } from '../api/ComposerApi';
 import { UploadApi } from '../api/UploadApi';
 import { ApiClient } from '../net/ApiClient';
+import { ChatPreferences } from '../core/Prefs';
 import { HttpTransport } from '../net/HttpTransport';
 import { Transport } from '../net/Transport';
 import { MediaLoader } from '../media/MediaLoader';
+import { AudioPlayer } from '../media/AudioPlayer';
 import { ChatRef } from '../model/Dtos';
 import { GlobalPoller } from '../polling/GlobalPoller';
 import { AppStore } from './AppStore';
@@ -32,6 +34,8 @@ export class StoreHub {
   readonly approvalApi: ApprovalApi;
   readonly uploadApi: UploadApi;
   readonly media: MediaLoader;
+  /** One speaker for the whole app, so two windows cannot play over each other. */
+  readonly audio: AudioPlayer;
   readonly poller: GlobalPoller;
   readonly app: AppStore;
   private readonly chatStores: Map<string, ChatStore> = new Map();
@@ -50,6 +54,7 @@ export class StoreHub {
     this.approvalApi = new ApprovalApi(this.client);
     this.uploadApi = new UploadApi(this.client);
     this.media = new MediaLoader(this.client);
+    this.audio = new AudioPlayer();
     this.app = new AppStore(this.client, this.auth, this.agentApi, http);
     this.poller = new GlobalPoller(this.chatApi, this.approvalApi);
     this.poller.register(this.app);
@@ -73,7 +78,8 @@ export class StoreHub {
       existing.rebind(ref.chatId, ref.sessionId, ref.userId);
       return existing;
     }
-    const created = new ChatStore(ref, this.chatApi, this.uploadApi, this.approvalApi, this.media);
+    const created = new ChatStore(ref, this.chatApi, this.uploadApi, this.approvalApi,
+      this.media, this.audio);
     this.chatStores.set(ref.chatId, created);
     return created;
   }
@@ -109,8 +115,24 @@ export class StoreHub {
     }
   }
 
+  /**
+   * Local cleanup, from the home page: the clips this phone cached for playback
+   * and the drafts it was holding. Nothing here touches the server's transcript —
+   * deleting a window is the PC's decision, and a phone tap must not erase it for
+   * every device that shares the account.
+   */
+  clearLocal(ctx: common.Context): Promise<void> {
+    this.audio.stop();
+    this.media.clearCache();
+    this.chatStores.forEach((store: ChatStore): void => {
+      store.forgetDraft();
+    });
+    return ChatPreferences.clearAll(ctx);
+  }
+
   /** Sign-out: release every run and forget decoded media so no token stays live. */
   reset(): void {
+    this.audio.stop();
     this.chatStores.forEach((store: ChatStore): void => {
       store.dispose();
     });
@@ -133,6 +155,9 @@ export class StoreHub {
 
   private async boot(ctx: common.Context): Promise<void> {
     this.context = ctx;
+    // Video and audio play from the sandbox, so the cache needs a directory before
+    // the first window can ask a clip to load.
+    this.media.bind(ctx);
     await this.app.restore(ctx);
     if (this.app.hasSavedSession()) {
       await this.app.refreshAgents();

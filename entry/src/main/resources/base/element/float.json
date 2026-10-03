@@ -52,6 +52,7 @@
     { "name": "app_bubble_max_width", "value": "82%" },
     { "name": "app_tool_max_width", "value": "86%" },
     { "name": "app_image_max_height", "value": "220vp" },
+    { "name": "app_video_max_width", "value": "391vp" },
     { "name": "app_tool_collapsed_height", "value": "160vp" }
   ]
 }

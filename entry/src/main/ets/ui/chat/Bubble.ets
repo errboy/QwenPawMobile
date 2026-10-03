@@ -11,7 +11,6 @@ import { AppColor, AppLine, AppRadius, AppSize, AppSpace, AppType, AppWidth } fr
 import { NoticeTone, UiKind, UiMessage } from '../../state/UiMessage';
 import { Role } from '../../core/Wire';
 import { Copy } from '../../l10n/Copy';
-import { Parts } from '../../model/Parts';
 import { image } from '@kit.ImageKit';
 import { MarkdownView } from './MarkdownView';
 
@@ -19,6 +18,9 @@ import { MarkdownView } from './MarkdownView';
 export struct Bubble {
   @ObjectLink item: UiMessage;
   onRecall: (key: string) => void = (): void => {};
+  /** A ready image opens full-screen; the page owns that overlay, not this file. */
+  onZoomImage: (key: string) => void = (): void => {};
+  onToggleAudio: (key: string) => void = (): void => {};
 
   private errorTone(): boolean {
     return this.item.tone === NoticeTone.ERROR;
@@ -42,6 +44,12 @@ export struct Bubble {
     return value !== undefined && value.failed;
   }
 
+  /** A Video reads a URL only: either the sandbox file or the server's own link. */
+  private videoSource(): string {
+    const value = this.item.video;
+    return value === undefined ? '' : value.url;
+  }
+
   @Builder
   imageBlock() {
     if (this.imageReady()) {
@@ -49,6 +57,9 @@ export struct Bubble {
         .objectFit(ImageFit.Contain)
         .borderRadius(AppRadius.card)
         .constraintSize({ maxWidth: AppWidth.bubble_max, maxHeight: AppSize.image_max })
+        .onClick(() => {
+          this.onZoomImage(this.item.key);
+        })
     } else if (this.imageBroken()) {
       Text(Copy.chat_image_unavailable)
         .fontSize(AppType.caption)
@@ -62,13 +73,26 @@ export struct Bubble {
 
   @Builder
   videoBlock() {
-    if (Parts.isDirectUrl(this.item.videoRef)) {
-      Video({ src: this.item.videoRef, previewUri: '' })
+    if (this.videoSource().length > 0) {
+      Video({ src: this.videoSource(), previewUri: '' })
+        // Auto-play is the component's default, which in a scrolling list means a
+        // clip starts sounding off the moment it scrolls into view.
+        .autoPlay(false)
         .controls(true)
         .borderRadius(AppRadius.card)
-        .constraintSize({ maxWidth: AppWidth.bubble_max, maxHeight: AppSize.image_max })
-    } else {
+        // Cover is the component's default, which cuts off whatever does not fit the
+        // box; a clip's shape is only known once it plays, so contain it instead.
+        .objectFit(ImageFit.Contain)
+        // The box still gets a shape worth letterboxing into: 82% of a wide column
+        // over a 220vp height is 2.5:1, mostly black around a 4:3 clip.
+        .width(AppWidth.bubble_max)
+        .constraintSize({ maxWidth: AppSize.video_max, maxHeight: AppSize.image_max })
+    } else if (this.item.video !== undefined && this.item.video.failed) {
       Text(Copy.chat_video_unavailable)
+        .fontSize(AppType.caption)
+        .fontColor(AppColor.text_tertiary)
+    } else {
+      Text(Copy.chat_video_loading)
         .fontSize(AppType.caption)
         .fontColor(AppColor.text_tertiary)
     }
@@ -78,14 +102,17 @@ export struct Bubble {
   audioBlock() {
     if (this.item.audioRef.length > 0) {
       Row({ space: AppSpace.xxs }) {
-        Text(Copy.chat_audio_label)
+        Text(this.item.audioPlaying ? Copy.chat_audio_playing : Copy.chat_audio_label)
           .fontSize(AppType.caption)
-          .fontColor(AppColor.text_secondary)
+          .fontColor(this.item.audioPlaying ? AppColor.accent_text : AppColor.text_secondary)
       }
-      .backgroundColor(AppColor.surface_subtle)
+      .backgroundColor(this.item.audioPlaying ? AppColor.accent_soft : AppColor.surface_subtle)
       .padding(AppSpace.sm)
       .borderRadius(AppRadius.card)
       .constraintSize({ maxWidth: AppWidth.bubble_max })
+      .onClick(() => {
+        this.onToggleAudio(this.item.key);
+      })
     }
   }
 

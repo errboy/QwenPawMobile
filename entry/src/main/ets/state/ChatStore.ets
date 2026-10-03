@@ -18,6 +18,7 @@ import { Failure } from '../core/Failure';
 import { ChatPreferences } from '../core/Prefs';
 import { ChatStatus, MsgType, Role, RunStatus, ToolTypes } from '../core/Wire';
 import { MediaLoader, MediaValue } from '../media/MediaLoader';
+import { AudioPlayer } from '../media/AudioPlayer';
 import { Attachment } from '../model/Attachment';
 import { ChatPreference } from '../model/ChatPrefs';
 import {
@@ -76,6 +77,7 @@ export class ChatStore implements RunSink, PollTarget {
   private readonly uploadApi: UploadApi;
   private readonly approvalApi: ApprovalApi;
   private readonly media: MediaLoader;
+  private readonly audio: AudioPlayer;
   private readonly templates: PartTemplates;
   private readonly controller: RunController;
   private views: Array<() => void> = [];
@@ -83,12 +85,13 @@ export class ChatStore implements RunSink, PollTarget {
   private clock: number = -1;
 
   constructor(ref: ChatRef, api: ChatApi, uploadApi: UploadApi, approvalApi: ApprovalApi,
-    media: MediaLoader) {
+    media: MediaLoader, audio: AudioPlayer) {
     this.ref = ref;
     this.api = api;
     this.uploadApi = uploadApi;
     this.approvalApi = approvalApi;
     this.media = media;
+    this.audio = audio;
     this.templates = partTemplates();
     this.controller = new RunController(api, this, new StreamReducer(this.templates));
     this.controller.bind(ref.chatId, ref.sessionId, ref.userId);
@@ -152,6 +155,7 @@ export class ChatStore implements RunSink, PollTarget {
     this.controller.dispose();
     this.stopClock();
     this.views = [];
+    this.stopAudio();
   }
 
   // ---------- public actions ----------
@@ -211,6 +215,14 @@ export class ChatStore implements RunSink, PollTarget {
     await ChatPreferences.set(ctx, pref);
   }
 
+  /**
+   * Local cleanup dropped this window's stored draft, so the live copy goes too:
+   * a store that kept one would write it back on the composer's next keystroke.
+   */
+  forgetDraft(): void {
+    this.controller.pref.draft = '';
+  }
+
   async bootstrap(): Promise<void> {
     this.loading = true;
     this.emit();
@@ -267,6 +279,48 @@ export class ChatStore implements RunSink, PollTarget {
 
   stopRun(): void {
     this.controller.requestStop();
+  }
+
+  /**
+   * One tap plays a clip, the next stops it. The player is app-wide, so starting
+   * here also silences whichever bubble was holding the speaker before.
+   */
+  async playAudio(m: UiMessage): Promise<void> {
+    if (m.audioRef.length === 0) {
+      return;
+    }
+    if (this.audio.current() === m.key) {
+      this.audio.stop();
+      return;
+    }
+    const source = await this.media.audioSource(m.audioRef);
+    if (source.length === 0) {
+      this.pushNotice(Copy.chat_audio_unavailable, NoticeTone.ERROR);
+      return;
+    }
+    m.audioPlaying = true;
+    this.emit();
+    this.audio.play(m.key, source, (key: string): void => {
+      this.clearPlaying(key);
+    }, (message: string): void => {
+      this.clearPlaying(m.key);
+      this.pushNotice(Copy.fill(Copy.notice_audio_failed, message), NoticeTone.ERROR);
+    });
+  }
+
+  /** Leaving a window must not leave its voice note playing behind the page. */
+  stopAudio(): void {
+    if (this.audio.current().length > 0 && this.indexOf(this.audio.current()) >= 0) {
+      this.audio.stop();
+    }
+  }
+
+  private clearPlaying(key: string): void {
+    const index = this.indexOf(key);
+    if (index >= 0) {
+      this.items[index].audioPlaying = false;
+      this.emit();
+    }
   }
 
   /** The user's decision is never made for them: this only fires on a tap. */
@@ -384,6 +438,7 @@ export class ChatStore implements RunSink, PollTarget {
       created.fileName = u.fileName;
       this.push(created);
       this.requestImage(created);
+      this.requestVideo(created);
       this.emit();
       return;
     }
@@ -399,7 +454,13 @@ export class ChatStore implements RunSink, PollTarget {
       this.requestImage(held);
     }
     if (u.videoUrl.length > 0) {
+      const moved = held.videoRef !== u.videoUrl;
       held.videoRef = u.videoUrl;
+      if (moved) {
+        held.video = undefined;
+        held.videoRequested = false;
+        this.requestVideo(held);
+      }
     }
     if (u.audioUrl.length > 0) {
       held.audioRef = u.audioUrl;
@@ -506,6 +567,7 @@ export class ChatStore implements RunSink, PollTarget {
     this.items = rebuilt;
     for (const m of rebuilt) {
       this.requestImage(m);
+      this.requestVideo(m);
     }
     this.emit();
   }
@@ -565,12 +627,20 @@ export class ChatStore implements RunSink, PollTarget {
       m.text = m.text.length > 0 ? `${m.text}\n${line}` : line;
     }
     for (const up of uploads) {
-      if (m.imageRef.length === 0 && UploadApi.mimeFromName(up.file_name).startsWith('image/')) {
+      const mime = UploadApi.mimeFromName(up.file_name);
+      // The sent clip is addressable by its stored path, so the phone previews and
+      // replays it exactly the way it plays one received from the PC.
+      if (m.imageRef.length === 0 && mime.startsWith('image/')) {
         m.imageRef = up.url;
+      } else if (m.videoRef.length === 0 && mime.startsWith('video/')) {
+        m.videoRef = up.url;
+      } else if (m.audioRef.length === 0 && mime.startsWith('audio/')) {
+        m.audioRef = up.url;
       }
     }
     this.push(m);
     this.requestImage(m);
+    this.requestVideo(m);
     return m;
   }
 
@@ -582,6 +652,22 @@ export class ChatStore implements RunSink, PollTarget {
     m.imageRequested = true;
     this.media.load(m.imageRef).then((value: MediaValue): void => {
       m.image = value;
+      this.mediaRev += 1;
+      this.emit();
+    });
+  }
+
+  /**
+   * Same byte path as an image, but the result is a file the player opens rather
+   * than a bitmap: a Video component cannot carry the bearer header.
+   */
+  private requestVideo(m: UiMessage): void {
+    if (m.videoRef.length === 0 || m.videoRequested) {
+      return;
+    }
+    m.videoRequested = true;
+    this.media.videoSource(m.videoRef).then((value: MediaValue): void => {
+      m.video = value;
       this.mediaRev += 1;
       this.emit();
     });

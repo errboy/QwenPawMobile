@@ -46,13 +46,23 @@
 | 冷启动闪一下宽度 | 首帧没预发布分桶，`Breakpoint.publish()` 太晚 |
 | 横屏没变化 | 手机模拟器 `emulator rotate` 是空操作；真机请物理转或用大屏形态验 |
 
-## 5. Windows 上的脚本
+## 5. 多媒体播放
+
+| 现象 | 原因 |
+| --- | --- |
+| 视频气泡上写"视频暂不支持播放" | 这句是 **`Video` 组件自己盖的**，不是本 App 的文案（我们那条是"视频暂不可用"）。原因是容器解不开：测试用假 mp4（只有 `ftyp`、没有 `moov`）必然如此，用 ffmpeg 真造一条再判 |
+| 语音报 `unsupport prepare operation` | `AVPlayer` 的 `prepare()` 只能在 `initialized` 状态调，而该状态是赋值 `url` 之后**异步**上报的。见 `media/AudioPlayer.ets` 头部注释 |
+| 气泡一直停在"播放中" | 播放失败没回传。`play()` 不 reject，失败一律走 `onFail` 回调并复原标记 |
+| 换了真素材仍放不出旧 clip | `cacheDir/media` 里那份是按引用哈希命名的旧字节，命中即不再下载。主页点「清理」再看 |
+| 清理后第一次播放明显慢一点 | 字节要重新取回再落盘。`pathFor()` 每次调用都重新确认文件在不在，所以不会拿被删掉的缓存去播 |
+
+## 6. Windows 上的脚本
 
 - `.bat` 必须是 **CRLF + 纯 ASCII**。用带 LF 或中文的工具写 `.bat`，`cmd` 会把整段炸掉（本机 ACP=936）。
 - `.ps1` 里带中文必须存成 **UTF-8 with BOM**，否则 PowerShell 读成乱码。
 - Python 不需要装任何第三方包：`qp_gate.py` 与 `selftest.py` 只用标准库。
 
-## 6. 还是不行
+## 7. 还是不行
 
 按 [../.github/ISSUE_TEMPLATE](../.github/ISSUE_TEMPLATE) 里的模板提 issue，务必带：
 设备与系统版本、断点桶、`devecocli log --level W` 片段、是真实端还是桩、

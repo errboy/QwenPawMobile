@@ -1,18 +1,21 @@
 /**
- * Turns a message's image reference into something an Image component can draw.
+ * Turns a message's media reference into something a component can draw or play.
  *
  * v1 appended the bearer token to the preview URL. That put the credential into
  * every HTTP request line, proxy log and screenshot of the chat. Here the bytes
  * come through ApiClient.fetchBytes() with the Authorization header and are
  * decoded to a PixelMap; http(s) URLs pass through as-is, and history's inline
- * `data:` URIs are decoded locally because Image cannot draw them.
+ * `data:` URIs are decoded locally because Image cannot draw them. Video and
+ * audio cannot be handed a PixelMap or a header, so they go through MediaCache.
  */
+import { common } from '@kit.AbilityKit';
 import { image } from '@kit.ImageKit';
 import { util } from '@kit.ArkTS';
 import { ApiClient } from '../net/ApiClient';
 import { Parts } from '../model/Parts';
 import { Failure } from '../core/Failure';
 import { Log } from '../core/Log';
+import { MediaCache } from './MediaCache';
 
 /** Bounded so a long chat cannot grow the native bitmap pool without limit. */
 const MAX_CACHED: number = 18;
@@ -49,12 +52,19 @@ export class MediaValue {
 
 export class MediaLoader {
   private readonly client: ApiClient;
-  private readonly cache: Map<string, image.PixelMap> = new Map();
+  private readonly cache: MediaCache;
+  private readonly pixmaps: Map<string, image.PixelMap> = new Map();
   /** Two bubbles for the same image must produce one request, not two. */
   private readonly inflight: Map<string, Promise<image.PixelMap>> = new Map();
 
   constructor(client: ApiClient) {
     this.client = client;
+    this.cache = new MediaCache(client);
+  }
+
+  /** The sandbox directory clips are written to; set once from the ability. */
+  bind(ctx: common.Context): void {
+    this.cache.bind(ctx);
   }
 
   /** data: URIs and http(s) URLs need no credential, so skip the byte path. */
@@ -84,14 +94,53 @@ export class MediaLoader {
     }
   }
 
+  /**
+   * A Video component's src: a direct URL, or the sandbox file the bytes were
+   * written to. The header-authenticated fetch is the only way past an
+   * authenticated server, and the player cannot carry one.
+   */
+  async videoSource(ref: string): Promise<MediaValue> {
+    if (ref.length === 0) {
+      return new MediaValue();
+    }
+    if (MediaLoader.isDirect(ref)) {
+      return MediaValue.ofUrl(ref);
+    }
+    const uri = await this.cache.uriFor(ref);
+    return uri.length === 0 ? MediaValue.failure() : MediaValue.ofUrl(uri);
+  }
+
+  /**
+   * An AVPlayer's source: the URL itself, or the sandbox path the caller opens as
+   * `fd://`. Empty means the clip cannot be played here.
+   */
+  async audioSource(ref: string): Promise<string> {
+    if (ref.length === 0 || ref.startsWith('data:')) {
+      return '';
+    }
+    if (MediaLoader.isDirect(ref)) {
+      return ref;
+    }
+    return await this.cache.pathFor(ref);
+  }
+
+  /** Bytes held in the sandbox cache, for the storage line on the home page. */
+  cacheBytes(): number {
+    return this.cache.sizeBytes();
+  }
+
+  clearCache(): void {
+    this.cache.clear();
+  }
+
   /** Logged-out or agent-switch cleanup: drop decoded bitmaps, keep nothing stale. */
   clear(): void {
-    this.cache.clear();
+    this.pixmaps.clear();
     this.inflight.clear();
   }
 
   private async resolve(ref: string): Promise<MediaValue> {
-    const hit = this.cache.get(ref);
+    const hit = this.pixmaps.get(ref);
     if (hit !== undefined) {
       this.remember(ref, hit);
       return MediaValue.ofMap(hit);
@@ -119,7 +168,7 @@ export class MediaLoader {
    * not those, so the payload is decoded here and never leaves the device.
    */
   private async decodeInline(ref: string): Promise<MediaValue> {
-    const hit = this.cache.get(ref);
+    const hit = this.pixmaps.get(ref);
     if (hit !== undefined) {
       return MediaValue.ofMap(hit);
     }
@@ -157,13 +206,13 @@ export class MediaLoader {
    * dropped from the map, not released, because a bubble may still be drawing it.
    */
   private remember(ref: string, map: image.PixelMap): void {
-    this.cache.delete(ref);
-    this.cache.set(ref, map);
-    if (this.cache.size <= MAX_CACHED) {
+    this.pixmaps.delete(ref);
+    this.pixmaps.set(ref, map);
+    if (this.pixmaps.size <= MAX_CACHED) {
       return;
     }
-    for (const stale of this.cache.keys()) {
-      this.cache.delete(stale);
+    for (const stale of this.pixmaps.keys()) {
+      this.pixmaps.delete(stale);
       break;
     }
   }

@@ -41,7 +41,12 @@ export class UiMessage {
   image?: MediaValue;
   imageRequested: boolean = false;
   videoRef: string = '';
+  /** Resolved to a sandbox file:// URI (or a direct URL) once the bytes land. */
+  video?: MediaValue;
+  videoRequested: boolean = false;
   audioRef: string = '';
+  /** This clip holds the speaker. Only one bubble can, app-wide. */
+  audioPlaying: boolean = false;
   fileRef: string = '';
   fileName: string = '';
 }

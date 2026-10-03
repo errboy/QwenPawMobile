@@ -39,10 +39,16 @@ deviceType 始终报 `phone`。所以布局键是**窗口宽度（vp）**，不�
 
 | 用途 | 600–840vp | ≥840vp | 来源 |
 | --- | --- | --- | --- |
-| 聊天/登录/设置正文 `AppMeasure.text` | 600 | 680 | `theme/Theme.ets:141-146` |
-| 会话列表/状态行 `AppMeasure.panel` | 680 | 880 | `theme/Theme.ets:149-154` |
+| 聊天/登录/设置正文 `AppMeasure.text` | 600 | 680 | `theme/Theme.ets:146-151` |
+| 会话列表/状态行 `AppMeasure.panel` | 680 | 880 | `theme/Theme.ets:154-159` |
 
 `xs`/`sm` 两者都是 `100%`。
+
+媒体气泡不吃这两档：它按气泡宽度的 82% 走，再各自封顶。图片用
+`ImageFit.Contain`，本来就变形不了；视频必须**显式**写 `Contain`，因为
+`Video` 的默认填充是 `Cover`——它会裁掉装不下的部分。宽屏桶里 82% 能到
+557vp 而高度封在 220vp，那是 2.5:1 的框，4:3 的录像放进去只剩中间一条，
+所以视频另有一个 391vp（= 220 × 16/9）的宽度上限（`theme/Theme.ets:120-123`）。
 
 ## 4. 首帧不闪跳
 

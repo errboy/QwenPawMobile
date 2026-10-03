@@ -15,7 +15,7 @@ import { Copy } from '../l10n/Copy';
 import { Bp } from '../core/Breakpoint';
 import { AgentSummary, ChatRef, ChatSpec } from '../model/Dtos';
 import { Failure } from '../core/Failure';
-import { Settings } from '../core/Prefs';
+import { ChatPreferences, Settings } from '../core/Prefs';
 import { StoreHub } from '../state/StoreHub';
 
 @Entry
@@ -40,6 +40,10 @@ struct HomePage {
   /** A create is in flight; the button must not start a second window. */
   @State creating: boolean = false;
   @State notice: string = '';
+  /** Bytes this phone cached for video and voice playback. */
+  @State mediaBytes: number = 0;
+  /** Chats on this server whose composer still holds unsent text. */
+  @State draftCount: number = 0;
   /** Created once so detach can identify the same closure. */
   private pull: () => void = (): void => {};
   private jumped: boolean = false;
@@ -64,6 +68,7 @@ struct HomePage {
     }
     this.hub().app.attachView(this.pull);
     this.sync();
+    this.refreshStorage();
     this.hub().poller.poke();
   }
 
@@ -74,7 +79,51 @@ struct HomePage {
   /** Coming back from a chat: the foreground pointer and statuses may have moved. */
   onPageShow(): void {
     this.sync();
+    this.refreshStorage();
     this.hub().poller.poke();
+  }
+
+  /**
+   * A clip played a moment ago, a draft typed a moment ago: both are read from the
+   * device, so the numbers beside the cleanup button are current whenever the page
+   * is on screen.
+   */
+  private refreshStorage(): void {
+    const ctx = this.ctx();
+    if (ctx === undefined) {
+      return;
+    }
+    this.mediaBytes = this.hub().media.cacheBytes();
+    ChatPreferences.draftCount(ctx).then((count: number): void => {
+      this.draftCount = count;
+    });
+  }
+
+  /**
+   * Give back what the phone is holding. Chat transcripts are deliberately not
+   * part of this: they live on the PC, and deleting one from a phone would erase
+   * it for every device that shares the account.
+   */
+  private clearLocal(): void {
+    const ctx = this.ctx();
+    if (ctx === undefined) {
+      return;
+    }
+    this.hub().clearLocal(ctx).then((): void => {
+      this.refreshStorage();
+    }).catch((err: Object): void => {
+      this.notice = Copy.fill(Copy.notice_clear_failed, Failure.from(err).message);
+    });
+  }
+
+  private sizeText(bytes: number): string {
+    if (bytes < 1024) {
+      return `${bytes} B`;
+    }
+    if (bytes < 1024 * 1024) {
+      return `${(bytes / 1024).toFixed(1)} KB`;
+    }
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   }
 
   private sync(): void {
@@ -421,6 +470,42 @@ struct HomePage {
     })
   }
 
+  /**
+   * Local storage and the one tap that gives it back. It sits outside the list
+   * because it is about the device, not about any one conversation.
+   */
+  @Builder
+  storageBar() {
+    Row({ space: AppSpace.sm }) {
+      Column({ space: AppSpace.xxs }) {
+        Text(Copy.fillN2(Copy.home_storage_line, this.sizeText(this.mediaBytes), this.draftCount))
+          .fontSize(AppType.caption)
+          .fontColor(AppColor.text_secondary)
+        Text(Copy.home_storage_note)
+          .fontSize(AppType.caption)
+          .fontColor(AppColor.text_quaternary)
+          .maxLines(2)
+          .textOverflow({ overflow: TextOverflow.Ellipsis })
+      }
+      .alignItems(HorizontalAlign.Start)
+      .layoutWeight(1)
+
+      AppButton({
+        label: Copy.home_storage_clear,
+        quiet: true,
+        onTap: (): void => {
+          this.clearLocal();
+        }
+      })
+    }
+    /** Same centered column as the list above it; '100%' reads flush-left on a tablet. */
+    .width(AppMeasure.panel(this.wBp))
+    .padding(AppSpace.sm)
+    .backgroundColor(AppColor.surface_subtle)
+    .border({ width: AppLine.thin, color: AppColor.border_subtle })
+    .borderRadius(AppRadius.row)
+  }
+
   build() {
     Column({ space: AppSpace.sm }) {
       this.header()
@@ -479,6 +564,8 @@ struct HomePage {
         .layoutWeight(1)
         .scrollBar(BarState.Off)
       }
+
+      this.storageBar()
 
       if (this.notice.length > 0) {
         Text(this.notice)

@@ -105,6 +105,10 @@ export class Copy {
   static readonly home_row_running: string = '进行中';
   static readonly home_theme: string = '主题 · %s';
   static readonly home_row_meta: string = '%s · %s';
+  /** Local-only storage line: what this phone holds, never the server's record. */
+  static readonly home_storage_line: string = '媒体缓存 %s · 未发送草稿 %d 条';
+  static readonly home_storage_note: string = '聊天记录保存在电脑端，这里只清理手机上的副本';
+  static readonly home_storage_clear: string = '清理';
 
   // ---------- chat ----------
   static readonly chat_back: string = '‹ 返回';
@@ -148,9 +152,14 @@ export class Copy {
   static readonly chat_attachment_line: string = '📎 %s';
   static readonly chat_image_loading: string = '加载图片…';
   static readonly chat_image_unavailable: string = '图片暂不可用';
+  /** The whole full-screen image is the close gesture, so the hint has to say so. */
+  static readonly chat_zoom_close: string = '点击任意处关闭';
   static readonly chat_video_loading: string = '加载视频…';
   static readonly chat_video_unavailable: string = '视频暂不可用';
   static readonly chat_audio_label: string = '🎤 语音消息';
+  /** Tap-to-play chip: there is no waveform here, so the label carries the state. */
+  static readonly chat_audio_playing: string = '⏸ 播放中 · 点击停止';
+  static readonly notice_audio_failed: string = '语音播放失败：%s';
   static readonly chat_audio_unavailable: string = '语音暂不可用';
   static readonly chat_file_unavailable: string = '文件暂不可用';
   /** Chip label when no loop mode is chosen; the server's default mode has no command. */
@@ -188,6 +197,7 @@ export class Copy {
   static readonly notice_stopped: string = '已停止生成';
   static readonly notice_unknown_error: string = '未知错误';
   static readonly notice_upload_failed: string = '上传失败：%s';
+  static readonly notice_clear_failed: string = '清理失败：%s';
   static readonly notice_upload_no_path: string = '上传响应缺少文件路径';
   static readonly notice_pick_failed: string = '选择文件失败：%s';
   static readonly notice_pick_skipped: string = '已跳过：%s';

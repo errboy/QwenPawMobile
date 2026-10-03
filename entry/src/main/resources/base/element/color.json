@@ -19,6 +19,7 @@
     { "name": "app_surface_raised", "value": "#FFFFFF" },
     { "name": "app_surface_sunken", "value": "#F9F8F4" },
     { "name": "app_shell_bg", "value": "#F9F8F4" },
+    { "name": "app_scrim", "value": "#1D1B16" },
     { "name": "app_glass", "value": "#E0FFFFFF" },
 
     { "name": "app_fill_strong", "value": "#17000000" },
