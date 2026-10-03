@@ -12,8 +12,9 @@ import { common } from '@kit.AbilityKit';
 import { AppButton } from '../ui/common/AppButton';
 import { ApiClient } from '../net/ApiClient';
 import { LanScan } from '../net/LanScan';
-import { AppColor, AppLine, AppRadius, AppSize, AppSpace, AppType } from '../theme/Theme';
+import { AppColor, AppLine, AppMeasure, AppRadius, AppSize, AppSpace, AppType } from '../theme/Theme';
 import { Copy } from '../l10n/Copy';
+import { Bp } from '../core/Breakpoint';
 import { StoreHub } from '../state/StoreHub';
 
 @Entry
@@ -27,6 +28,8 @@ struct SettingsPage {
   @State localIp: string = '';
   @State statusMsg: string = '';
   @State busy: boolean = false;
+  /** The window's width bucket, published by Breakpoint; 'sm' means a phone. */
+  @StorageProp(Bp.KEY) wBp: string = Bp.sm;
 
   private hub(): StoreHub {
     return StoreHub.shared();
@@ -117,7 +120,7 @@ struct SettingsPage {
         })
     }
     .alignItems(HorizontalAlign.Start)
-    .width('100%')
+    .width(AppMeasure.text(this.wBp))
   }
 
   @Builder
@@ -132,7 +135,7 @@ struct SettingsPage {
         .fontColor(AppColor.text_tertiary)
     }
     .alignItems(HorizontalAlign.Start)
-    .width('100%')
+    .width(AppMeasure.text(this.wBp))
   }
 
   @Builder
@@ -152,7 +155,7 @@ struct SettingsPage {
         }
       })
     }
-    .width('100%')
+    .width(AppMeasure.text(this.wBp))
     .padding({ left: AppSpace.sm, right: AppSpace.xs, top: AppSpace.xs, bottom: AppSpace.xs })
     .backgroundColor(AppColor.surface)
     .border({ width: AppLine.thin, color: AppColor.border_subtle })
@@ -175,7 +178,7 @@ struct SettingsPage {
             .fontWeight(FontWeight.Bold)
             .fontColor(AppColor.text)
         }
-        .width('100%')
+        .width(AppMeasure.text(this.wBp))
         .margin({ top: AppSpace.lg })
 
         this.sectionTitle(Copy.config_servers_label, Copy.config_server_hint)
@@ -183,7 +186,7 @@ struct SettingsPage {
           Text(Copy.config_empty_list)
             .fontSize(AppType.secondary)
             .fontColor(AppColor.warning_text)
-            .width('100%')
+            .width(AppMeasure.text(this.wBp))
         }
         ForEach(this.urls, (url: string) => {
           this.serverRow(url)
@@ -208,7 +211,7 @@ struct SettingsPage {
             }
           })
         }
-        .width('100%')
+        .width(AppMeasure.text(this.wBp))
 
         Column({ space: AppSpace.xxs }) {
           Text(Copy.config_port_label)
@@ -235,7 +238,7 @@ struct SettingsPage {
           .width('100%')
         }
         .alignItems(HorizontalAlign.Start)
-        .width('100%')
+        .width(AppMeasure.text(this.wBp))
 
         Column({ space: AppSpace.xxs }) {
           Text(this.localIp.length > 0 ? Copy.fill(Copy.config_local_address, this.localIp)
@@ -249,7 +252,7 @@ struct SettingsPage {
           }
         }
         .alignItems(HorizontalAlign.Start)
-        .width('100%')
+        .width(AppMeasure.text(this.wBp))
 
         this.sectionTitle(Copy.config_credential_label, Copy.config_credential_hint)
         this.field(Copy.username_field, Copy.username_placeholder, this.user, false,
@@ -265,13 +268,13 @@ struct SettingsPage {
           Text(this.statusMsg)
             .fontSize(AppType.secondary)
             .fontColor(AppColor.error_text)
-            .width('100%')
+            .width(AppMeasure.text(this.wBp))
         }
 
         Text(Copy.fillNums(Copy.config_saved_line, [this.urls.length, this.portValue()]))
           .fontSize(AppType.caption)
           .fontColor(AppColor.text_quaternary)
-          .width('100%')
+          .width(AppMeasure.text(this.wBp))
 
         AppButton({
           label: Copy.config_save,
@@ -281,6 +284,7 @@ struct SettingsPage {
             this.save();
           }
         })
+          .width(AppMeasure.text(this.wBp))
       }
       .padding({ left: AppSpace.xl, right: AppSpace.xl, bottom: AppSpace.xxl })
       .width('100%')

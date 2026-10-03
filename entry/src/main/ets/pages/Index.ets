@@ -10,10 +10,12 @@
  * live in AppStore, so this file is only list state and copy.
  */
 import { common } from '@kit.AbilityKit';
+import { KeyboardAvoidMode } from '@kit.ArkUI';
 import { AppButton } from '../ui/common/AppButton';
 import { LanScan, LanTarget } from '../net/LanScan';
-import { AppColor, AppLine, AppRadius, AppSize, AppSpace, AppType } from '../theme/Theme';
+import { AppColor, AppLine, AppMeasure, AppRadius, AppSize, AppSpace, AppType } from '../theme/Theme';
 import { Copy } from '../l10n/Copy';
+import { Bp } from '../core/Breakpoint';
 import { Failure, FailureKind } from '../core/Failure';
 import { StoreHub } from '../state/StoreHub';
 
@@ -30,6 +32,7 @@ struct Index {
   @State statusMsg: string = '';
   @State busy: boolean = false;
   @State hasSaved: boolean = false;
+  @StorageProp(Bp.KEY) wBp: string = Bp.sm;
   /** Created once so detach can identify the same closure. */
   private pull: () => void = (): void => {};
 
@@ -42,6 +45,10 @@ struct Index {
   }
 
   aboutToAppear(): void {
+    // Default 上抬 only keeps the focused field visible, so everything below it
+    // (密码, 保存并返回) hides under the keyboard on tall windows. This is a window
+    // call and survives router pushes, so setting it here covers every page.
+    this.getUIContext().setKeyboardAvoidMode(KeyboardAvoidMode.RESIZE);
     this.pull = (): void => {
       this.sync();
     };
@@ -157,7 +164,7 @@ struct Index {
       .fontSize(AppType.body)
       .fontWeight(FontWeight.Bold)
       .fontColor(AppColor.text_secondary)
-      .width('100%')
+      .width(AppMeasure.text(this.wBp))
   }
 
   @Builder
@@ -187,7 +194,7 @@ struct Index {
         .fontSize(AppType.caption)
         .fontColor(t.online ? AppColor.success : AppColor.text_quaternary)
     }
-    .width('100%')
+    .width(AppMeasure.text(this.wBp))
     .padding(AppSpace.sm)
     .backgroundColor(this.selected === t.url ? AppColor.accent_soft : AppColor.surface)
     .border({
@@ -220,7 +227,7 @@ struct Index {
         Text(Copy.login_pick_hint)
           .fontSize(AppType.secondary)
           .fontColor(AppColor.text_secondary)
-          .width('100%')
+          .width(AppMeasure.text(this.wBp))
 
         if (this.savedRows.length > 0) {
           this.sectionTitle(Copy.login_saved_section)
@@ -240,21 +247,21 @@ struct Index {
           Text(Copy.login_empty)
             .fontSize(AppType.body)
             .fontColor(AppColor.text_secondary)
-            .width('100%')
+            .width(AppMeasure.text(this.wBp))
         }
 
         if (this.scanning) {
           Text(Copy.fillNums(Copy.login_scan_progress, [this.scanDone, this.scanTotal, this.scanFound]))
             .fontSize(AppType.caption)
             .fontColor(AppColor.text_secondary)
-            .width('100%')
+            .width(AppMeasure.text(this.wBp))
         }
 
         if (this.selected.length > 0) {
           Text(Copy.fill(Copy.login_selected, this.selected))
             .fontSize(AppType.caption)
             .fontColor(AppColor.accent_text)
-            .width('100%')
+            .width(AppMeasure.text(this.wBp))
         }
 
         AppButton({
@@ -265,6 +272,7 @@ struct Index {
             this.doLogin();
           }
         })
+        .width(AppMeasure.text(this.wBp))
 
         Row({ space: AppSpace.sm }) {
           AppButton({
@@ -285,7 +293,7 @@ struct Index {
           })
             .layoutWeight(1)
         }
-        .width('100%')
+        .width(AppMeasure.text(this.wBp))
 
         if (this.hasSaved && this.hub().app.server === this.selected) {
           AppButton({
@@ -296,13 +304,14 @@ struct Index {
               this.goHome();
             }
           })
+            .width(AppMeasure.text(this.wBp))
         }
 
         if (this.statusMsg.length > 0) {
           Text(this.statusMsg)
             .fontSize(AppType.secondary)
             .fontColor(AppColor.error_text)
-            .width('100%')
+            .width(AppMeasure.text(this.wBp))
         }
       }
       .padding({ left: AppSpace.xl, right: AppSpace.xl, bottom: AppSpace.xxl })

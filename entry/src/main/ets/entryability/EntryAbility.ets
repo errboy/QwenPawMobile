@@ -1,19 +1,18 @@
 /**
  * The only place that boots the app.
  *
- * Two things happen here and nothing else: the saved palette is applied before the
- * first frame, and StoreHub reads the saved session so a page never submits against
- * an unconfigured client.
+ * Three things happen here and nothing else: the saved palette is applied before
+ * the first frame, StoreHub reads the saved session so a page never submits
+ * against an unconfigured client, and the main window starts reporting its width
+ * bucket so pages size themselves for a phone or a tablet.
  */
 import { AbilityConstant, UIAbility, Want } from '@kit.AbilityKit';
-import { hilog } from '@kit.PerformanceAnalysisKit';
 import { window } from '@kit.ArkUI';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { StoreHub } from '../state/StoreHub';
 import { ThemeManager } from '../theme/ThemeManager';
-
-const DOMAIN: number = 0x0000;
-const TAG: string = 'QwenPaw';
+import { Breakpoint } from '../core/Breakpoint';
+import { Log } from '../core/Log';
 
 export default class EntryAbility extends UIAbility {
   onCreate(want: Want, launchParam: AbilityConstant.LaunchParam): void {
@@ -24,16 +23,23 @@ export default class EntryAbility extends UIAbility {
   onDestroy(): void {
     // Streams and the poll timer are owned by the hub, so the ability releases them.
     StoreHub.shared().reset();
-    hilog.info(DOMAIN, TAG, 'Ability destroyed');
+    Breakpoint.detach();
+    Log.info('Ability destroyed');
   }
 
   onWindowStageCreate(windowStage: window.WindowStage): void {
+    // Before the page loads: the window rect is already readable, so the first
+    // frame can be sized right instead of painting phone-width and jumping.
+    Breakpoint.attach(windowStage);
     windowStage.loadContent('pages/Index', (err: BusinessError): void => {
       if (err.code) {
-        hilog.error(DOMAIN, TAG, 'Failed to load the first page: %{public}s', JSON.stringify(err));
+        Log.error(`Failed to load the first page: ${JSON.stringify(err)}`);
         return;
       }
-      hilog.info(DOMAIN, TAG, 'First page loaded');
+      // After the first frame the UIContext exists, so the system's own bucket
+      // replaces the rect estimate.
+      Breakpoint.resync();
+      Log.info('First page loaded');
     });
   }
 

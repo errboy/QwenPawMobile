@@ -7,6 +7,7 @@
  * re-resolves them on colour-mode change; durations and layers cannot live in
  * resources and stay here as numbers.
  */
+import { Bp } from '../core/Breakpoint';
 
 export class AppColor {
   static readonly accent: Resource = $r('app.color.app_accent');
@@ -115,6 +116,33 @@ export class AppWidth {
   static readonly tool_max: string = '86%';
   static readonly chip_max: string = '60%';
   static readonly status_w: number = 64;
+}
+
+/**
+ * How much of a window a page may lay its content out in.
+ *
+ * Up to 'sm' the page fills the window: that is a phone, and it is also a
+ * widefold's inner screen, which is only 440vp across. From 'md' up the column is
+ * capped in vp and centred, so a chat line stays a readable measure instead of
+ * stretching over a foldable's inner screen or a tablet. Two kinds, because a list
+ * gains from width while prose does not.
+ */
+export class AppMeasure {
+  /** Chat, login and settings: a line of text stays readable. */
+  static text(wBp: string): ResourceStr | number {
+    if (wBp === Bp.xs || wBp === Bp.sm) {
+      return '100%';
+    }
+    return wBp === Bp.md ? 600 : 680;
+  }
+
+  /** Chat list and status rows, which read better with the room used. */
+  static panel(wBp: string): ResourceStr | number {
+    if (wBp === Bp.xs || wBp === Bp.sm) {
+      return '100%';
+    }
+    return wBp === Bp.md ? 680 : 880;
+  }
 }
 
 export class AppMotion {

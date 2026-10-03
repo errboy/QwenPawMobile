@@ -9,9 +9,10 @@ import { common } from '@kit.AbilityKit';
 import { AppButton } from '../ui/common/AppButton';
 import { ForegroundCard, SessionRow } from '../ui/home/SessionRow';
 import { ChannelGroup, ChannelGroups } from '../ui/home/ChannelGroups';
-import { AppColor, AppLine, AppRadius, AppSpace, AppType } from '../theme/Theme';
+import { AppColor, AppLine, AppMeasure, AppRadius, AppSpace, AppType } from '../theme/Theme';
 import { ThemeManager, ThemeMode } from '../theme/ThemeManager';
 import { Copy } from '../l10n/Copy';
+import { Bp } from '../core/Breakpoint';
 import { AgentSummary, ChatRef, ChatSpec } from '../model/Dtos';
 import { Failure } from '../core/Failure';
 import { Settings } from '../core/Prefs';
@@ -20,6 +21,8 @@ import { StoreHub } from '../state/StoreHub';
 @Entry
 @Component
 struct HomePage {
+  /** The window's width bucket, published by Breakpoint; 'sm' means a phone. */
+  @StorageProp(Bp.KEY) wBp: string = Bp.sm;
   @State server: string = '';
   @State user: string = '';
   @State chats: ChatSpec[] = [];
@@ -359,7 +362,7 @@ struct HomePage {
       }
     }
     .alignItems(HorizontalAlign.Start)
-    .width('100%')
+    .width(AppMeasure.panel(this.wBp))
     .padding({ top: AppSpace.lg })
   }
 
@@ -426,7 +429,7 @@ struct HomePage {
         Text(Copy.home_empty)
           .fontSize(AppType.body)
           .fontColor(AppColor.text_secondary)
-          .width('100%')
+          .width(AppMeasure.panel(this.wBp))
       } else {
         // List.space takes number|string only, so the gap comes from item margins.
         List() {
@@ -472,7 +475,7 @@ struct HomePage {
             }, (group: ChannelGroup): string => group.key)
           }
         }
-        .width('100%')
+        .width(AppMeasure.panel(this.wBp))
         .layoutWeight(1)
         .scrollBar(BarState.Off)
       }
@@ -481,7 +484,7 @@ struct HomePage {
         Text(this.notice)
           .fontSize(AppType.caption)
           .fontColor(AppColor.error_text)
-          .width('100%')
+          .width(AppMeasure.panel(this.wBp))
       }
 
       Row({ space: AppSpace.sm }) {
@@ -509,10 +512,10 @@ struct HomePage {
         }
         .layoutWeight(1)
       }
-      .width('100%')
+      .width(AppMeasure.panel(this.wBp))
       .alignItems(VerticalAlign.Center)
     }
-    .alignItems(HorizontalAlign.Start)
+    .alignItems(HorizontalAlign.Center)
     .padding({ left: AppSpace.lg, right: AppSpace.lg, bottom: AppSpace.lg })
     .width('100%')
     .height('100%')

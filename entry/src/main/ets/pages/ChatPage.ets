@@ -6,15 +6,15 @@
  * scheduling, frame merging and reconnect policy live behind the store.
  */
 import { common } from '@kit.AbilityKit';
-import { KeyboardAvoidMode } from '@kit.ArkUI';
 import { Bubble } from '../ui/chat/Bubble';
 import { ApprovalCard } from '../ui/chat/ApprovalCard';
 import { Composer } from '../ui/chat/Composer';
 import { FullScreenEditor } from '../ui/chat/FullScreenEditor';
 import { AppButton } from '../ui/common/AppButton';
 import { VoiceNote } from '../media/VoiceNote';
-import { AppColor, AppMotion, AppRadius, AppSize, AppSpace, AppType } from '../theme/Theme';
+import { AppColor, AppMeasure, AppMotion, AppRadius, AppSize, AppSpace, AppType } from '../theme/Theme';
 import { Copy } from '../l10n/Copy';
+import { Bp } from '../core/Breakpoint';
 import { Attachment, AttachSource } from '../model/Attachment';
 import { PickOutcome } from '../api/UploadApi';
 import { Choice, SelectorKey, SelectorSpec } from '../model/Choices';
@@ -40,6 +40,8 @@ const NO_MODEL_OVERRIDE: string = '';
 @Entry
 @Component
 struct ChatPage {
+  /** The window's width bucket, published by Breakpoint; 'sm' means a phone. */
+  @StorageProp(Bp.KEY) wBp: string = Bp.sm;
   @State items: UiMessage[] = [];
   @State approvals: ApprovalInfo[] = [];
   @State bgRunning: ChatSpec[] = [];
@@ -96,7 +98,6 @@ struct ChatPage {
   }
 
   aboutToAppear(): void {
-    this.getUIContext().setKeyboardAvoidMode(KeyboardAvoidMode.RESIZE);
     const raw: Object | undefined = this.getUIContext().getRouter().getParams();
     if (raw !== undefined) {
       const params = raw as ChatRef;
@@ -850,7 +851,7 @@ struct ChatPage {
       }
     }
     .alignItems(HorizontalAlign.Start)
-    .width('100%')
+    .width(AppMeasure.text(this.wBp))
     .padding({ top: AppSpace.sm, bottom: AppSpace.xs })
   }
 
@@ -897,7 +898,7 @@ struct ChatPage {
         Text(Copy.chat_loading_history)
           .fontSize(AppType.body)
           .fontColor(AppColor.text_secondary)
-          .width('100%')
+          .width(AppMeasure.text(this.wBp))
       } else {
         // List.space takes number|string only, so the gap comes from item margins.
         List({ scroller: this.scroller }) {
@@ -908,7 +909,7 @@ struct ChatPage {
             .margin({ bottom: AppSpace.xs })
           }, (item: UiMessage): string => item.key)
         }
-        .width('100%')
+        .width(AppMeasure.text(this.wBp))
         .layoutWeight(1)
         .scrollBar(BarState.Off)
         .edgeEffect(EdgeEffect.Spring)
@@ -927,6 +928,7 @@ struct ChatPage {
             this.decide(target, approved);
           }
         })
+        .width(AppMeasure.text(this.wBp))
       }, (approval: ApprovalInfo): string => `${approval.request_id}_${this.nowSec}`)
 
       if (this.recording) {
@@ -953,7 +955,7 @@ struct ChatPage {
             }
           })
         }
-        .width('100%')
+        .width(AppMeasure.text(this.wBp))
       }
 
       Composer({
@@ -995,6 +997,7 @@ struct ChatPage {
           this.onInputChanged();
         }
       })
+      .width(AppMeasure.text(this.wBp))
 
       if (this.uploading) {
         Row({ space: AppSpace.xs }) {
@@ -1006,10 +1009,10 @@ struct ChatPage {
             .fontSize(AppType.caption)
             .fontColor(AppColor.text_tertiary)
         }
-        .width('100%')
+        .width(AppMeasure.text(this.wBp))
       }
     }
-    .alignItems(HorizontalAlign.Start)
+    .alignItems(HorizontalAlign.Center)
     .padding({ left: AppSpace.md, right: AppSpace.md })
     .width('100%')
     .height('100%')

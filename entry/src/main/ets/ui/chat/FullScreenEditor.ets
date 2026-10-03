@@ -5,13 +5,15 @@
  * Provides a distraction-free editing experience with send/cancel actions.
  */
 import { AppButton } from '../common/AppButton';
-import { AppColor, AppLine, AppRadius, AppSize, AppSpace, AppType } from '../../theme/Theme';
+import { AppColor, AppLine, AppMeasure, AppRadius, AppSize, AppSpace, AppType } from '../../theme/Theme';
 import { Copy } from '../../l10n/Copy';
+import { Bp } from '../../core/Breakpoint';
 
 @Component
 export struct FullScreenEditor {
   @Link text: string;
   @Prop placeholder: string = '';
+  @StorageProp(Bp.KEY) wBp: string = Bp.sm;
   onSend: () => void = (): void => {};
   onCancel: () => void = (): void => {};
   /** Every keystroke, so the page can keep a crash-proof draft of the text. */
@@ -45,7 +47,7 @@ export struct FullScreenEditor {
           }
         })
       }
-      .width('100%')
+      .width(AppMeasure.text(this.wBp))
       .padding({ left: AppSpace.md, right: AppSpace.md, top: AppSpace.sm, bottom: AppSpace.sm })
       .backgroundColor(AppColor.surface_raised)
       .border({ width: { bottom: AppLine.thin }, color: AppColor.border })
@@ -54,6 +56,7 @@ export struct FullScreenEditor {
       TextArea({ text: this.text, placeholder: this.placeholder })
         .fontSize(AppType.body)
         .backgroundColor(AppColor.surface)
+        .width(AppMeasure.text(this.wBp))
         .layoutWeight(1)
         .padding(AppSpace.md)
         .onChange((value: string) => {
