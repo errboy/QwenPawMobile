@@ -32,7 +32,7 @@ import {
 } from '../model/Dtos';
 import { LoopModes } from '../model/LoopModes';
 import { PartTemplates, Parts } from '../model/Parts';
-import { PollSnapshot, PollTarget } from '../polling/GlobalPoller';
+import { POLL_INTERVAL_MS, PollSnapshot, PollTarget } from '../polling/GlobalPoller';
 import { StreamReducer, Upsert } from '../stream/StreamReducer';
 import { RunController, RunPhase, RunSink } from '../stream/RunController';
 import { Copy } from '../l10n/Copy';
@@ -66,6 +66,11 @@ export class ChatStore implements RunSink, PollTarget {
    * it has to stick to the tail again.
    */
   mediaRev: number = 0;
+
+  /** The finish stamp this window last saw for its own chat, from the poller. */
+  private seenFinishedAt: string = '';
+  /** When history was last reloaded, so the poller does not fetch it twice. */
+  private lastPullSec: number = 0;
 
   private readonly api: ChatApi;
   private readonly uploadApi: UploadApi;
@@ -311,6 +316,7 @@ export class ChatStore implements RunSink, PollTarget {
     const mine: ApprovalInfo[] = [];
     const bg: ChatSpec[] = [];
     let running = false;
+    let finishedAt = '';
     for (const a of snapshot.approvals) {
       if (ApprovalApi.belongsTo(a, this.ref.sessionId)) {
         mine.push(a);
@@ -319,6 +325,7 @@ export class ChatStore implements RunSink, PollTarget {
     for (const c of snapshot.chats) {
       if (c.id === this.ref.chatId) {
         running = c.status === ChatStatus.RUNNING;
+        finishedAt = c.last_finished_at;
       } else if (c.status === ChatStatus.RUNNING) {
         bg.push(c);
       }
@@ -327,7 +334,35 @@ export class ChatStore implements RunSink, PollTarget {
     this.bgRunning = bg;
     this.nowSec = Math.floor(Date.now() / 1000);
     this.controller.probe(running);
+    this.catchUpTurn(finishedAt);
     this.emit();
+  }
+
+  /**
+   * Catch a turn this window never watched. A run that starts and finishes inside
+   * one 10s gap is never attached to, and even when it is attached the stream
+   * never carries the other side's own message, so the chat's finish stamp is the
+   * only remaining evidence that the transcript moved without us.
+   */
+  private catchUpTurn(finishedAt: string): void {
+    if (finishedAt.length === 0 || finishedAt === this.seenFinishedAt) {
+      return;
+    }
+    const firstSighting = this.seenFinishedAt.length === 0;
+    this.seenFinishedAt = finishedAt;
+    if (firstSighting || this.controller.busy() || this.pulledRecently()) {
+      return;
+    }
+    this.resyncFromHistory().catch((e: Object): void => {
+      this.pushNotice(Copy.fill(Copy.notice_history_failed, Failure.from(e).message),
+        NoticeTone.ERROR);
+    });
+  }
+
+  /** True while a reload from the run's own terminal frame still covers this turn. */
+  private pulledRecently(): boolean {
+    return this.lastPullSec > 0
+      && Math.floor(Date.now() / 1000) - this.lastPullSec < POLL_INTERVAL_MS / 1000;
   }
 
   // ---------- RunSink ----------
@@ -443,6 +478,7 @@ export class ChatStore implements RunSink, PollTarget {
   }
 
   async resyncFromHistory(): Promise<boolean> {
+    this.lastPullSec = Math.floor(Date.now() / 1000);
     const h: ChatHistory = await this.api.history(this.ref.chatId);
     this.replaceFromHistory(h);
     return h.status === ChatStatus.RUNNING;
@@ -460,7 +496,10 @@ export class ChatStore implements RunSink, PollTarget {
       }
     }
     for (const m of this.items) {
-      if (m.kind === UiKind.QUEUED) {
+      // Notices are the phone's own commentary and never come back from history,
+      // so a rebuild that dropped them would silently erase "stopped" / "failed"
+      // lines the user had just been told about.
+      if (m.kind === UiKind.QUEUED || m.kind === UiKind.NOTICE) {
         rebuilt.push(m);
       }
     }

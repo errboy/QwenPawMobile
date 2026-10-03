@@ -93,6 +93,8 @@ export class RunController {
   private attempts: number = 0;
   private terminalSeen: boolean = true;
   private replayEnded: boolean = false;
+  /** True while a run this client typed is live, false for one it only watches. */
+  private localRun: boolean = false;
   private phaseValue: string = RunPhase.IDLE;
   chatId: string = '';
   sessionId: string = '';
@@ -189,6 +191,7 @@ export class RunController {
       }
       this.sink.onRunFinished(RunStatus.COMPLETED, '');
       this.finish();
+      this.pullForeignTurn();
       return;
     }
     if (chatRunning) {
@@ -221,8 +224,25 @@ export class RunController {
     this.clearTimer();
     this.terminalSeen = false;
     this.replayEnded = false;
+    this.localRun = !isReconnect;
     this.setPhase(RunPhase.STREAMING);
     this.session = this.api.stream(bodyJson, new FrameHandler(this, isReconnect));
+  }
+
+  /**
+   * The user's message never rides the stream. The console SSE buffer only ever
+   * holds assistant/tool frames, and the turn lands in persisted history from the
+   * POST_RESPONSE hook that runs *before* the terminal frame, so once a run the
+   * PC (or the other phone) started ends, the bubbles have to be reloaded or the
+   * message the other side typed stays invisible until the page is re-entered.
+   */
+  private pullForeignTurn(): void {
+    if (this.localRun || this.phaseValue !== RunPhase.IDLE) {
+      return;
+    }
+    this.sink.resyncFromHistory().catch((e: Object): void => {
+      this.sink.onTransportError(Failure.from(e).message);
+    });
   }
 
   handleFrame(raw: string): void {
@@ -247,12 +267,14 @@ export class RunController {
       this.sink.onTransportError(facts.transportError);
       this.sink.onRunFinished(RunStatus.FAILED, facts.transportError);
       this.finish();
+      this.pullForeignTurn();
       return;
     }
     if (facts.runStatus.length > 0) {
       this.terminalSeen = true;
       this.sink.onRunFinished(facts.runStatus, facts.runError);
       this.finish();
+      this.pullForeignTurn();
     }
   }
 

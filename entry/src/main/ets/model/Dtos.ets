@@ -48,6 +48,8 @@ export class ChatSpec {
   channel: string = 'console';
   created_at: string = '';
   updated_at: string = '';
+  /** Stamped when a run finishes; how a client notices a turn it never watched. */
+  last_finished_at: string = '';
   /** Live value: the server overwrites it from the task tracker (idle|running). */
   status: string = 'idle';
   pinned: boolean = false;
