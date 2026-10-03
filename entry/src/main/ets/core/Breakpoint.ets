@@ -6,7 +6,9 @@
  * unfolds. Measured on emulators, all of them at 2.0-2.75 px/vp:
  * Mate X inner 711vp 'md' / outer 345vp 'sm'; Mate XT 1107 'lg' / 712 'md' / 350 'sm';
  * Pura X Max widefold inner 939vp 'lg' / outer 459vp 'sm'; MatePad 1137vp 'lg' /
- * MatePad Pro 13 1440vp 'xl'. A widefold is not automatically narrow.
+ * MatePad Pro 13 1440vp 'xl'. A widefold is not automatically narrow. A real phone
+ * (3.375 px/vp) landscape is 822vp, only 18vp short of 'lg' — so 'md' is a phone
+ * state too, not just a foldable one.
  *
  * So the window is measured and published from EntryAbility, and every page reads
  * the same AppStorage key instead of asking what device it is on. It is measured
