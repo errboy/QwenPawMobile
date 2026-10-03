@@ -22,11 +22,26 @@ HTTP 接口，桌面端升级不会让它失效。
 
 ## 快速开始（Windows）
 
+`start.bat` 是唯一入口，它自己会找一个可用的 Python 3：
+
 ```bat
-start.bat                  : 首次运行会引导设置账号口令，然后启动
+start.bat                  : 启动。gate.json 不存在时先引导设置账号与口令
+start.bat password         : 换手机端登录的用户名与口令
+start.bat discover         : 只看探测到的上游端口，然后退出
+start.bat check            : 跑 40 项自检（自带桩上游，不碰真实配置）
+start.bat firewall         : 单独添加 Windows 入站放行（会弹 UAC）
+start.bat firewall-remove  : 删掉本工具加的防火墙规则
+start.bat help             : 列出上面的命令
 ```
 
-或手工：
+换口令请走 `start.bat password`，**不要用 `--init --force`**：`--init` 会重新生成
+`token_secret`，已签发的令牌全部作废，手机端就得重新登录。`--init` 遇到已有的
+`gate.json` 默认拒绝覆盖，也是这个原因。
+
+口令**只在提示符下输入**，从不作为命令行参数：参数会留在进程列表和 shell 历史里，
+局域网上的这台机器不该冒这个险。
+
+或手工（与上面的子命令等价）：
 
 ```bat
 python qp_gate.py --init              :: 设置手机端登录用的用户名 + 口令，并放行防火墙
