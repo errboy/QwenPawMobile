@@ -20,11 +20,22 @@ function localSigning(): any {
     apply(currentNode: any): void {
       // getNodeDir() hands back a NormalizedFile wrapper, not a string.
       const file = join(currentNode.getNodeDir().filePath as string, SIGNING_FILE);
+      const context = currentNode.getContext(OhosPluginId.OHOS_APP_PLUGIN);
       if (!existsSync(file)) {
-        console.warn(`[localSigning] ${file} is missing, hap will not sign. Run 'devecocli signature generate'.`);
+        // Leaving the empty placeholders in place makes hvigor still attempt to
+        // sign and fail the whole build (00303116: storePassword shorter than
+        // 32), so a fresh clone cannot even reach an unsigned hap. Drop the
+        // config instead: assembleHap then stops at a perfectly inspectable
+        // entry-default-unsigned.hap, and only installation needs a certificate.
+        const profile = context.getBuildProfileOpt();
+        profile.app.signingConfigs = [];
+        for (const product of profile.app.products ?? []) {
+          delete product.signingConfig;
+        }
+        context.setBuildProfileOpt(profile);
+        console.warn(`[localSigning] ${file} is missing; building unsigned. Run 'devecocli signature generate' to sign and install.`);
         return;
       }
-      const context = currentNode.getContext(OhosPluginId.OHOS_APP_PLUGIN);
       const profile = context.getBuildProfileOpt();
       profile.app.signingConfigs = JSON.parse(readFileSync(file, 'utf-8')).signingConfigs;
       context.setBuildProfileOpt(profile);
