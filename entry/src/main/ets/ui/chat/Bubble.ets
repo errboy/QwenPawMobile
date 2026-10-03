@@ -13,6 +13,7 @@ import { Role } from '../../core/Wire';
 import { Copy } from '../../l10n/Copy';
 import { Parts } from '../../model/Parts';
 import { image } from '@kit.ImageKit';
+import { MarkdownView } from './MarkdownView';
 
 @Component
 export struct Bubble {
@@ -211,14 +212,15 @@ export struct Bubble {
           this.fileBlock()
         }
         if (this.item.text.length > 0) {
-          Text(this.item.streaming ? `${this.item.text} ▍` : this.item.text)
-            .fontSize(AppType.message)
-            .fontColor(AppColor.text)
-            .backgroundColor(AppColor.surface)
-            .padding(AppSpace.sm)
-            .borderRadius(AppRadius.card)
-            .border({ width: AppLine.thin, color: AppColor.border_subtle })
-            .constraintSize({ maxWidth: AppWidth.bubble_max })
+          Column() {
+            MarkdownView({ src: this.item.text, streaming: this.item.streaming })
+          }
+          .alignItems(HorizontalAlign.Start)
+          .backgroundColor(AppColor.surface)
+          .padding(AppSpace.sm)
+          .borderRadius(AppRadius.card)
+          .border({ width: AppLine.thin, color: AppColor.border_subtle })
+          .constraintSize({ maxWidth: AppWidth.bubble_max })
         }
       }
       .alignItems(HorizontalAlign.Start)

@@ -91,6 +91,15 @@ export class AppType {
   static readonly display: Resource = $r('app.float.app_font_display');
 }
 
+/**
+ * Font families. Only code spans and code blocks ask for one, so everything else
+ * keeps the system default untouched. 'monospace' resolves to the system mono face
+ * where the device ships one and falls back silently where it does not.
+ */
+export class AppFont {
+  static readonly mono: string = 'monospace';
+}
+
 export class AppLine {
   static readonly thin: Resource = $r('app.float.app_border_thin');
   static readonly emphasis: Resource = $r('app.float.app_border_emphasis');
