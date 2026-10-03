@@ -1,0 +1,97 @@
+name: 问题报告 / Bug report
+description: 构建失败、装机问题、连接不上、界面行为不对
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        这个项目连的是**你自己局域网里的桌面端**，所以"环境"这一栏比代码更重要。
+        请尽量填全，缺一项基本无法复现。**涉及鉴权/审批/令牌的问题请勿公开提 issue**，
+        走仓库 Security 页的私密漏洞报告。
+  - type: textarea
+    id: what
+    attributes:
+      label: 现象
+      description: 实际发生了什么，以及你期望发生什么
+      placeholder: 登录页扫描列表一直是空的，期望能扫出跑着 qp-gate 的那台电脑
+    validations:
+      required: true
+  - type: dropdown
+    id: layer
+    attributes:
+      label: 发生在哪一层
+      options:
+        - 构建/签名
+        - 装机/启动
+        - 连接（扫描、登录、401/403）
+        - 会话收发（流式、审批、附件）
+        - 布局/形态
+        - qp-gate
+        - 不确定
+    validations:
+      required: true
+  - type: dropdown
+    id: backend
+    attributes:
+      label: 服务端是哪一种
+      description: 桩/mock 通过不算联调通过，请务必如实填
+      options:
+        - 真实 QwenPaw 桌面端
+        - 桩/mock 服务
+        - 没有服务端（纯构建）
+    validations:
+      required: true
+  - type: dropdown
+    id: topology
+    attributes:
+      label: 接入方式
+      options:
+        - 经 qp-gate（推荐）
+        - 桌面端直接 --host 0.0.0.0
+        - 模拟器直连宿主机 10.0.2.2
+        - 其他方式
+    validations:
+      required: true
+  - type: textarea
+    id: device
+    attributes:
+      label: 设备与系统
+      description: 型号、HarmonyOS 版本、真机还是模拟器、竖屏还是横屏/折叠态
+      placeholder: nova 14 Pro，HarmonyOS 5.x 真机，竖屏；或 MatePad 模拟器 open 态
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: 复现步骤
+      value: |
+        1.
+        2.
+        3.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: 日志
+      description: |
+        `devecocli log --device <序列号> --level W --bundle-name com.liaocaosix.qwenpawmobile --tail 200`
+        的输出。注意 user 版系统会裁掉 INFO 级日志。请删掉里面的真实 IP 与会话内容。
+      render: shell
+  - type: textarea
+    id: probes
+    attributes:
+      label: 关键探针结果
+      description: 在跑后端的那台机器上执行，把返回原样贴来（删掉敏感信息）
+      value: |
+        GET http://127.0.0.1:<端口>/api/auth/status →
+        python tools/qp-gate/selftest.py →
+  - type: checkboxes
+    id: checked
+    attributes:
+      label: 已经自查过
+      options:
+        - label: 读过 docs/09-troubleshooting.md 且不在表里
+        - label: 确认桌面端在跑（本机浏览器能拿到 /api/auth/status 的 JSON）
+        - label: 确认手机与后端在同一网段
+        - label: 多台设备时命令都带了 --device

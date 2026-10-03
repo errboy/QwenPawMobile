@@ -1,0 +1,59 @@
+name: 功能建议 / Feature request
+description: 新能力、体验改进、契约扩展
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        这个 App 的定位是**桌面端的遥控器**，模型执行与历史都在桌面端那一侧。
+        几条已定的边界，越过它们的设计请先开讨论帖：
+        审批必须由人在场点按钮（不做自动批准）；手机不写桌面端全局配置（只读）；
+        不引入第三方运行时依赖；布局按窗口宽度桶，不按设备型号。
+  - type: textarea
+    id: need
+    attributes:
+      label: 你想解决的具体问题
+      description: 用一次真实使用场景描述，而不是"希望有个按钮"
+      placeholder: 在平板横屏时，主页三列卡片被压成一列，我要来回滚动才能找到上周那个会话
+    validations:
+      required: true
+  - type: textarea
+    id: now
+    attributes:
+      label: 现在怎么做 / 现在为什么不行
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: 建议的做法
+      description: 可选项，允许只描述期望结果
+  - type: dropdown
+    id: surface
+    attributes:
+      label: 主要影响面
+      options:
+        - 会话与流式渲染
+        - 附件（图/视频/语音/文件）
+        - 审批
+        - 登录与局域网发现
+        - 布局与形态适配
+        - 主题与文案
+        - qp-gate
+        - 构建/签名/文档
+        - 其他
+  - type: textarea
+    id: server
+    attributes:
+      label: 需要桌面端配合吗？
+      description: |
+        本 App 只能使用 QwenPaw 已公开的 HTTP 接口。若需要新端点或改动语义，
+        请写清楚是哪一种、以及在 v2.2.2-beta.4 上的现有替代路径。
+  - type: checkboxes
+    id: ack
+    attributes:
+      label: 确认
+      options:
+        - label: 我读过 docs/05-architecture.md 与 docs/07-server-contract.md
+        - label: 我不要求绕过审批或自动批准
+          required: true

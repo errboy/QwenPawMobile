@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 安全漏洞（请勿公开提 issue）
+    url: https://github.com/errboy/QwenPawMobile/security/advisories/new
+    about: 涉及鉴权、审批、令牌、局域网暴露的问题请走私密漏洞报告，见 SECURITY.md。
