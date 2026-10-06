@@ -109,9 +109,15 @@ export struct Bubble {
    * Opening costs a round trip — the bytes live on the PC — so it is offered only
    * where there is a reference to fetch. A name with no reference is a file this
    * phone was told about but cannot reach, and a tap on it would fail every time.
+   *
+   * Neither does a `data:` document's: the reader is handed a file, and an inlined
+   * payload carries no container suffix to name one by, so the tap would end in the
+   * same failure the fetch path reports. Its bytes are still here, which is what the
+   * info line says.
    */
   private openable(): boolean {
-    return this.item.fileRef.length > 0 && !this.item.fileBusy;
+    return this.item.fileRef.length > 0 && !this.item.fileRef.startsWith('data:')
+      && !this.item.fileBusy;
   }
 
   private viewCue(): string {
@@ -136,7 +142,10 @@ export struct Bubble {
     const kind = ext.length === 0
       ? Copy.chat_file_kind_unknown
       : Copy.fill(Copy.chat_file_kind, ext.toUpperCase());
-    const size = this.item.fileRef.length === 0 ? 0 : this.sizeOf(this.item.fileRef);
+    const ref = this.item.fileRef;
+    // An inlined file's bytes are in the message itself, so no cache lookup can
+    // find them and a miss would read "only on the PC" for a file already here.
+    const size = ref.startsWith('data:') ? Parts.inlineBytes(ref) : this.sizeOf(ref);
     return Copy.fill2(Copy.chat_file_meta, kind,
       size > 0 ? Copy.fill(Copy.assets_local, humanBytes(size)) : Copy.assets_remote);
   }
@@ -244,14 +253,18 @@ export struct Bubble {
   }
 
   @Builder
-  audioBlock() {
+  audioBlock(delivery: boolean) {
     if (this.item.audioRef.length > 0) {
       Row({ space: AppSpace.xxs }) {
         Text(this.item.audioPlaying ? Copy.chat_audio_playing : Copy.chat_audio_label)
           .fontSize(AppType.caption)
           .fontColor(this.item.audioPlaying ? AppColor.accent_text : AppColor.text_secondary)
       }
+      // The fill still marks playing and nothing else; a delivery only adds the
+      // outline, so the one state cue the pill has is not diluted by the other.
       .backgroundColor(this.item.audioPlaying ? AppColor.accent_soft : AppColor.surface_subtle)
+      .border(delivery ? { width: AppLine.emphasis, color: AppColor.accent }
+        : { width: 0, color: AppColor.border_subtle })
       .padding(AppSpace.sm)
       .borderRadius(AppRadius.card)
       .constraintSize({ maxWidth: AppWidth.bubble_max })
@@ -263,12 +276,13 @@ export struct Bubble {
   }
 
   @Builder
-  fileBlock() {
+  fileBlock(delivery: boolean) {
     if (this.item.fileRef.length > 0 || this.item.fileName.length > 0) {
       Column({ space: AppSpace.xxs }) {
         Text(`📄 ${this.fileNameShown()}`)
           .fontSize(AppType.caption)
-          .fontColor(AppColor.text_secondary)
+          .fontWeight(delivery ? FontWeight.Bold : FontWeight.Normal)
+          .fontColor(delivery ? AppColor.accent_text : AppColor.text_secondary)
           .maxLines(2)
           .textOverflow({ overflow: TextOverflow.Ellipsis })
         Row({ space: AppSpace.xxs }) {
@@ -285,10 +299,14 @@ export struct Bubble {
         .width('100%')
       }
       .alignItems(HorizontalAlign.Start)
-      .backgroundColor(AppColor.surface_subtle)
+      // A file the PC handed over is the thing the user asked for, and it has to be
+      // picked out of a screen full of folded cards; the outgoing receipt of a file
+      // the user sent themselves is not, so only the incoming one takes the accent.
+      .backgroundColor(delivery ? AppColor.accent_soft : AppColor.surface_subtle)
+      .border(delivery ? { width: AppLine.emphasis, color: AppColor.accent }
+        : { width: AppLine.thin, color: AppColor.border_subtle })
       .padding(AppSpace.sm)
       .borderRadius(AppRadius.card)
-      .border({ width: AppLine.thin, color: AppColor.border_subtle })
       .constraintSize({ maxWidth: AppWidth.bubble_max })
       .onClick(() => {
         if (this.openable()) {
@@ -298,6 +316,30 @@ export struct Bubble {
       // Same reason the image carries its own binding: the card fills the bubble, so
       // without it「引用这个文件」would only open on the padding under the name.
       .bindContextMenu(this.quoteMenu(), ResponseType.LongPress)
+    }
+  }
+
+  /**
+   * The media a bubble carries, in the order the turn produced them. Answer text and
+   * a tool card both sit under it, because a file is the part the user asked for and
+   * the words about it are the commentary.
+   *
+   * Only the receiving bubbles use this: what the user sent goes out through the
+   * user-side branch below, where the same cards are drawn as receipts.
+   */
+  @Builder
+  assetBlocks() {
+    if (this.item.imageRef.length > 0) {
+      this.imageBlock()
+    }
+    if (this.item.videoRef.length > 0) {
+      this.videoBlock()
+    }
+    if (this.item.audioRef.length > 0) {
+      this.audioBlock(true)
+    }
+    if (this.item.fileRef.length > 0 || this.item.fileName.length > 0) {
+      this.fileBlock(true)
     }
   }
 
@@ -339,10 +381,10 @@ export struct Bubble {
           this.videoBlock()
         }
         if (this.item.audioRef.length > 0) {
-          this.audioBlock()
+          this.audioBlock(false)
         }
         if (this.item.fileRef.length > 0 || this.item.fileName.length > 0) {
-          this.fileBlock()
+          this.fileBlock(false)
         }
         if (this.item.text.length > 0) {
           // The composer's own quote feature writes markdown (`> ` lines), and a
@@ -371,34 +413,56 @@ export struct Bubble {
       .bindContextMenu(this.quoteMenu(), ResponseType.LongPress)
     } else if (this.item.kind === UiKind.TOOL) {
       Column({ space: AppSpace.xxs }) {
-        Row({ space: AppSpace.xxs }) {
-          Text(Copy.fill(Copy.chat_tool_label, this.item.name))
-            .fontSize(AppType.caption)
-            .fontWeight(FontWeight.Bold)
-            .fontColor(AppColor.warning_text)
-            .layoutWeight(1)
-          Text(this.toolOpen ? Copy.chat_tool_collapse : Copy.chat_tool_expand)
-            .fontSize(AppType.caption)
-            .fontColor(AppColor.warning_text)
+        // A tool that handed over a file carries it here, above its own card: the
+        // card folds by default, and a file the user asked for is not something to
+        // dig out of a fold.
+        this.assetBlocks()
+        Column({ space: AppSpace.xxs }) {
+          Row({ space: AppSpace.xxs }) {
+            // A card that delivered a document is titled by that document: a run of
+            // them all read `🔧 send_file_to_user`, which is not something to scan a
+            // screen for. The tool's name goes one line below instead of into the
+            // fold, so the title swaps what it leads with and loses nothing.
+            Text(this.item.fileName.length > 0
+              ? Copy.fill(Copy.chat_tool_delivery, this.fileNameShown())
+              : Copy.fill(Copy.chat_tool_label, this.item.name))
+              .fontSize(AppType.caption)
+              .fontWeight(FontWeight.Bold)
+              .fontColor(this.item.fileName.length > 0
+                ? AppColor.accent_text : AppColor.warning_text)
+              .maxLines(1)
+              .textOverflow({ overflow: TextOverflow.Ellipsis })
+              .layoutWeight(1)
+            Text(this.toolOpen ? Copy.chat_tool_collapse : Copy.chat_tool_expand)
+              .fontSize(AppType.caption)
+              .fontColor(AppColor.warning_text)
+          }
+          .width('100%')
+          .onClick((): void => {
+            this.toggleTool();
+          })
+          if (this.item.fileName.length > 0) {
+            Text(Copy.fill(Copy.chat_tool_label, this.item.name))
+              .fontSize(AppType.caption)
+              .fontColor(AppColor.warning_text)
+          }
+          if (this.toolOpen) {
+            // No line cap: the text was already clipped when it was read off the wire,
+            // and a fold the user just opened should show what it holds.
+            Text(this.item.text)
+              .fontSize(AppType.caption)
+              .fontColor(AppColor.warning_text)
+          }
         }
-        .width('100%')
-        .onClick((): void => {
-          this.toggleTool();
-        })
-        if (this.toolOpen) {
-          // No line cap: the text was already clipped when it was read off the wire,
-          // and a fold the user just opened should show what it holds.
-          Text(this.item.text)
-            .fontSize(AppType.caption)
-            .fontColor(AppColor.warning_text)
-        }
+        .alignItems(HorizontalAlign.Start)
+        .backgroundColor(AppColor.warning_bg)
+        .border({ width: AppLine.thin, color: AppColor.warning_border })
+        .padding(AppSpace.sm)
+        .borderRadius(AppRadius.card)
+        .constraintSize({ maxWidth: AppWidth.tool_max })
       }
       .alignItems(HorizontalAlign.Start)
-      .backgroundColor(AppColor.warning_bg)
-      .border({ width: AppLine.thin, color: AppColor.warning_border })
-      .padding(AppSpace.sm)
-      .borderRadius(AppRadius.card)
-      .constraintSize({ maxWidth: AppWidth.tool_max })
+      .width('100%')
     } else if (this.item.kind === UiKind.REASONING) {
       Column({ space: AppSpace.xxs }) {
         Row({ space: AppSpace.xxs }) {
@@ -430,18 +494,7 @@ export struct Bubble {
       .constraintSize({ maxWidth: AppWidth.tool_max })
     } else {
       Column({ space: AppSpace.xxs }) {
-        if (this.item.imageRef.length > 0) {
-          this.imageBlock()
-        }
-        if (this.item.videoRef.length > 0) {
-          this.videoBlock()
-        }
-        if (this.item.audioRef.length > 0) {
-          this.audioBlock()
-        }
-        if (this.item.fileRef.length > 0 || this.item.fileName.length > 0) {
-          this.fileBlock()
-        }
+        this.assetBlocks()
         if (this.item.text.length > 0) {
           Column() {
             MarkdownView({ src: this.item.text, streaming: this.item.streaming })

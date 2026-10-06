@@ -1456,18 +1456,35 @@ struct ChatPage {
   }
 
   /**
+   * Whether a bubble holds something the user can open. A tool that handed over a
+   * file carries it on the same fields an answer bubble does, so the asset count and
+   * the panel read it without a second path — and the fold below has to leave it
+   * alone, because a file buried behind "8 tool calls" is the one thing the user
+   * asked the agent for.
+   */
+  private static carriesAsset(m: UiMessage): boolean {
+    for (const kind of ASSET_KINDS) {
+      if (ChatPage.refOf(m, kind).length > 0) {
+        return true;
+      }
+    }
+    return m.fileName.length > 0;
+  }
+
+  /**
    * The transcript in rows: a message stands alone, but consecutive tool cards
    * fold into one row headed by their count — an agent that recalls history in
    * bursts otherwise fills the screen with cards it folded for exactly that
    * reason. Two is the smallest run worth a header; a single card keeps the
-   * plain row it has always had.
+   * plain row it has always had. A card that carries a file is never folded, and
+   * so breaks the run it sits in.
    */
   private rows(): ChatRow[] {
     const rows: ChatRow[] = [];
     let i = 0;
     while (i < this.items.length) {
       const first = this.items[i];
-      if (first.kind !== UiKind.TOOL) {
+      if (first.kind !== UiKind.TOOL || ChatPage.carriesAsset(first)) {
         const alone = new ChatRow();
         alone.key = first.key;
         alone.items = [first];
@@ -1476,7 +1493,8 @@ struct ChatPage {
         continue;
       }
       let end = i + 1;
-      while (end < this.items.length && this.items[end].kind === UiKind.TOOL) {
+      while (end < this.items.length && this.items[end].kind === UiKind.TOOL
+        && !ChatPage.carriesAsset(this.items[end])) {
         end += 1;
       }
       const run = new ChatRow();

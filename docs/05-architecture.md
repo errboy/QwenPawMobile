@@ -220,13 +220,13 @@ Authorization 头里，按三种去向分流：
 
 ## 回显与归一：附件的标注只有一份
 
-点发送的那一瞬间气泡是本地造的（`ChatStore.addUserBubble`，`state/ChatStore.ets:715`），
-几秒后服务端把这一条归一回传、走 `toUi()`（同文件 `:659`）。两条路必须说出同一句话，
+点发送的那一瞬间气泡是本地造的（`ChatStore.addUserBubble`，`state/ChatStore.ets:735`），
+几秒后服务端把这一条归一回传、走 `toUi()`（同文件 `:660`）。两条路必须说出同一句话，
 否则用户会看着自己那条气泡改名。所以标注只有两份真源：
 
 | 一件事 | 唯一一处 | 两边都用它 |
 | --- | --- | --- |
-| 某类 part 在文字里长什么样（`[图片]` / `[语音]` / `[文件: 名]`） | `Parts.label()`（`model/Parts.ets:50`） | `Parts.displayText()` 与 `addUserBubble` |
+| 某类 part 在文字里长什么样（`[图片]` / `[语音]` / `[文件: 名]`） | `Parts.label()`（`model/Parts.ets:66`） | `Parts.displayText()` 与 `addUserBubble` |
 | 一个附件算图片还是音频 | 发送层那份 `mimes[]`（`ChatStore.send` 里由 `Attachment.mime` 映射出来），判定走 `ContentType.forMime()`（`core/Wire.ets:86`） | `ChatApi.buildParts` 与 `addUserBubble` 读同一个下标 |
 
 第二行是"同一份 mime"而不是"同一个函数"：上传回来的 `file_name` 是服务端给的，扩展名归它改，
@@ -235,6 +235,61 @@ Authorization 头里，按三种去向分流：
 第一个上传的音频/视频/文件同时回填 `imageRef`/`videoRef`/`audioRef`/`fileRef`，气泡因此
 当场就能播，而不是等归一那一下才长出播放器。**只带附件不带文字**也在这条规则里：标签就是
 正文，气泡不会塌成空。想在发送层再写一遍 if 之前先回到这张表 —— 那正是这个 bug 的形状。
+
+## 电脑端「发文件」住在工具卡的 output 里，不在 content part 里
+
+电脑端把文件交给用户的那条路，不产生 `file` / `image` 类型的 content part。它的形状是
+一张 `plugin_call_output`，`data.output` 是一个 **JSON 字符串**，解开是一份块列表：
+每个文件一个 `{"type":"data","name":…,"source":{"type":"url","url":"file:///…"}}`，
+内联的那一种把 `source` 换成 `{"type":"base64","data":…,"media_type":…}`，末尾跟一句
+`{"type":"text","text":"File sent successfully."}`。所以"发了十二个文件"到手机上就是
+十二张卡，卡片正文是一整段 JSON —— 只按 content part 找媒体的老路径一个文件也看不见，
+这正是当初那个 bug 的形状。
+
+读它的是 `Parts.toolMedia()`（`model/Parts.ets:192`）：块列表解不出来就返回空，普通工具
+那句"命中 3 条结果"因此原样留在卡里，绝不会被当成半截 JSON 改写。解出来了才动两处：
+文件按 mime 归成图/影/音/文档填进那四个 `*Ref` 槽（于是播放、缓存、资产面板、`📁` 角标
+全部复用第「多媒体的字节从哪来」一节已有的机制，一行新渲染代码都不加），卡片正文换成
+工具自己说的那句话。直播流和重进会话走的是两个入口 —— `Parts.toolMedia()` 在
+`stream/StreamReducer.ets:279` 与 `state/ChatStore.ets:681` 各被调一次 ——
+两边调的是同一个函数，这是本文件反复出现的那条规矩：一条消息只有一个解析处。
+
+块里那个 `name` **不保证存在**，而且它缺不缺与 `source` 是哪一类**互相独立**：真实端两个会话
+21 个数据块里 8 个没有 `name`（6 个是 `url`、2 个是 `base64`），另外还有一份 `base64` 是**带**
+名字的。所以取名不能按"内联就一定无名"分派，只能三路走（`model/Parts.ets:239`）：工具给了名
+就用；没给名、`source` 是 `url` 的还能从路径读叶子；两头都没有才落 `Copy.chat_file_inline`
+（「内嵌文件」）—— 内联块的"路径"是整串 `data:…;base64,…`，读它的尾巴当文件名就是在屏幕上
+打一串乱码，真实历史里那 2 个块正好都长这样。这条文案和别的显示文案一样只有一个
+出处 —— 它经 `PartTemplates.inlineFile`（`model/Parts.ets:46`）注入，注入点在
+`ChatStore.partTemplates()`（`state/ChatStore.ets:44`）里，忘了接就会显示成空。
+
+内联那份还牵出视图层的两条，说的都是"字节已经在消息里"这一件事：
+`Bubble.openable()`（`ui/chat/Bubble.ets:118`）对 `data:` 开头的引用不给「查看」，因为它
+根本不在 `MediaCache` 的寻址范围内（缓存按引用算哈希找文件，`data:` 那条长串取不到任何
+东西），点了只会得到一句没用的"没能取回字节" —— 这与 `quotable()` 不把 `data:` 编进
+新请求体是同一条规矩。大小那一行则改用 `Parts.inlineBytes()`（`model/Parts.ets:381`）
+从 base64 长度折算，不解码；否则一份明明已经在这台手机上的文件，会被写上「仅电脑端」。
+
+`url` 那条引用带 `file://` 前缀**不是**§8.3（[07](07-server-contract.md)）里被掐掉的那种。
+差别在于这句话是谁说的：content part 里的 `file:///C:\…` 是电脑端在描述**它自己屏幕上**
+渲染的图，手机拿它无处可取；而工具输出里的这一条是电脑端在说"这份文件我交给你了"，
+预览端点吃的恰好就是剥掉 scheme 之后的那条裸绝对路径 —— 桌面端自己也是这么做的。
+`Parts.localRef()`（`model/Parts.ets:176`）就是这一刀。
+
+视图层还有一条例外：带着文件的工具卡**不进**§158 那套连排折叠组，并且会把它所在的连排
+打断（`ChatPage.carriesAsset()`，`pages/ChatPage.ets:1465`）。合组是给"一排什么都没交付"
+的卡省屏幕；交付本身被折进 `×N`，用户就又只剩文字了。
+
+同一处还管"找得到"：带文档的卡以**文件名当标题**（`Copy.chat_tool_delivery`），工具名退到
+下面一行；交付那几行的底色与描边走主色（`Bubble.fileBlock(delivery)` /
+`audioBlock(delivery)`，`ui/chat/Bubble.ets:256`）。`delivery` 是**调用点传进去的常量**而不是
+从 `item.role` 推出来的：工具卡那条 `plugin_call_output` 的角色归服务端说，视图不该拿它当
+"这是收进来的一份东西"的判据 —— 谁在渲染哪一侧，调用点自己最清楚。
+标题那条只对**文档**生效，因为解析层把 `output` 里的 `name` 只写进文档一个槽位
+（`stream/StreamReducer.ets:292`、`state/ChatStore.ets:693` 两处同形），图 / 影 / 音三个槽只留
+ref。不能图省事把名字塞进 `fileName`：`fileBlock` 的判据是 `fileRef` 或 `fileName` 非空，那样
+会在图片下面多画一张文档卡。要让媒体卡也带名字，得先给三种媒体各加一个名字字段（模型 + 偏好
+持久化 + 两个解析点 + 渲染），而不只是改标题。
 
 ## 引用：把一条历史消息送回输入框
 
@@ -294,7 +349,7 @@ Authorization 头里，按三种去向分流：
 加一个 `查看 ›`，点下去先由 `state/ChatStore.ets:341` 的 `openFile()` 经 `media.localPath()`
 把字节取进 `MediaCache`（和资产面板同一份），再拉起外部应用。**删仍然只在资产面板与清理页** ——
 气泡上不放删除键，避免手滑。名字显示前
-过 `Parts.leafOf()`（`model/Parts.ets:99`），因为真实端给的是整条 Windows 路径。
+过 `Parts.leafOf()`（`model/Parts.ets:115`），因为真实端给的是整条 Windows 路径。
 
 "删除副本"删的是 `MediaCache` 里那一份（`MediaCache.drop()`，`media/MediaCache.ets:137`），
 电脑端原件不动，下次播放重新取一次 —— 面板上那行"仅电脑端"就是它真实的处境。图片在存下来之前一直显示
@@ -398,7 +453,7 @@ ArkUI 的百分比是照着"传下来的约束"算的，一个靠内容定宽的
 于是三列的表能长到屏幕宽、直接走出自己的气泡（实测过）。修法是气泡先看一眼
 这份文字里有没有表（`Markdown.hasTable`，`ui/chat/Markdown.ets:330`），有就直接
 吃满自己的宽度上限，没有才继续按内容收缩（`Bubble.bodyW`，
-`ui/chat/Bubble.ets:126`）。渲染那一头，`MarkdownView.tableBlock`
+`ui/chat/Bubble.ets:133`）。渲染那一头，`MarkdownView.tableBlock`
 （`ui/chat/MarkdownView.ets:194`）用等宽列 + 每格自己的对齐，流式光标落在最后
 一格，`sig()` 把每格文字长度算进 key，否则长出来的格子不会重绘。
 

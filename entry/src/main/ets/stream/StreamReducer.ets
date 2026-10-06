@@ -269,6 +269,30 @@ export class StreamReducer {
     const body = ToolTypes.isOutput(type) ? Parts.asText(data === undefined ? undefined : data.output)
       : Parts.asText(data === undefined ? undefined : data.arguments);
     u.text = Parts.clip(body, this.templates.toolClipChars);
+    if (!ToolTypes.isOutput(type)) {
+      return u;
+    }
+    // A tool that handed a file to the user keeps it in a serialised block list, so
+    // the file is what the card should show: one asset row per file, in the same
+    // slots a content part would have filled. The card's body then says what the
+    // tool said, because a page of base64 is not an answer anyone reads.
+    const media = Parts.toolMedia(content, this.templates);
+    if (media.files.length === 0) {
+      return u;
+    }
+    for (const f of media.files) {
+      if (f.kind === ContentType.IMAGE) {
+        u.imageUrl = f.ref;
+      } else if (f.kind === ContentType.VIDEO) {
+        u.videoUrl = f.ref;
+      } else if (f.kind === ContentType.AUDIO) {
+        u.audioUrl = f.ref;
+      } else {
+        u.fileUrl = f.ref;
+        u.fileName = f.name;
+      }
+    }
+    u.text = Parts.clip(media.text, this.templates.toolClipChars);
     return u;
   }
 

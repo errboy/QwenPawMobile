@@ -72,6 +72,7 @@ export struct AssetPanel {
       .backgroundColor(AppColor.surface_subtle)
       .borderRadius(AppRadius.pill)
       .padding({ left: AppSpace.sm, right: AppSpace.sm, top: AppSpace.xxs, bottom: AppSpace.xxs })
+      .margin({ right: AppSpace.xxs, bottom: AppSpace.xxs })
       .onClick(on)
   }
 
@@ -89,8 +90,10 @@ export struct AssetPanel {
       }
       .width('100%')
 
-      // The name line is the open target: it carries no nested control, so a tap
-      // here cannot be confused with one meant for a chip two lines below.
+      // The name line is the open target, and the row ends at its right edge. The
+      // chips below must therefore not be pushed to that same edge: 删除副本 used to
+      // sit directly under 打开 ›, one line apart, and a tap aimed at 打开 landed on
+      // the only destructive control in the panel.
       Row({ space: AppSpace.xs }) {
         Text(row.name)
           .fontSize(AppType.body)
@@ -108,7 +111,9 @@ export struct AssetPanel {
         this.onOpen(row);
       })
 
-      Row({ space: AppSpace.xxs }) {
+      // Wrapping, not one Row: at a large system font the four chips do not fit the
+      // narrowest bucket, and a chip measured past the window edge is untappable.
+      Flex({ wrap: FlexWrap.Wrap, alignItems: ItemAlign.Center }) {
         this.action(Copy.assets_locate, AppColor.accent_text, (): void => {
           this.onLocate(row);
         })
@@ -118,7 +123,6 @@ export struct AssetPanel {
         this.action(Copy.assets_forward, AppColor.accent_text, (): void => {
           this.onForward(row);
         })
-        Blank()
         if (row.cached) {
           this.action(Copy.assets_drop, AppColor.error_text, (): void => {
             this.confirmKey = row.key;
