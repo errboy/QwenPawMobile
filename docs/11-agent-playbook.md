@@ -186,7 +186,7 @@ cd /d <root> && devecocli ui screenshot --device <序列号> --path <root>\shots
 ## 7. 红线（做了就是事故，不是风格问题）
 
 - **绝不提交**：`tools/qp-gate/gate.json`、`external-signing-config.json`、
-  `local.properties`、`QwenPawMobile/scratch/**`、`QwenPawMobile/screenshots/**`、
+  `local.properties`、`scratch/**`、`screenshots/**`、
   `oh_modules/`、`.hvigor/`、`**/build/`。
 - **仓库里的任何文件都不能出现**：用户真实的局域网 IP、真实的桌面端随机端口、
   真机调试地址、账号用户名、任何绝对个人路径。截图/布局 dump 里带了，就**不要**把它
