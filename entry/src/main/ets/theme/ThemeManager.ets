@@ -28,14 +28,6 @@ export class ThemeMode {
     return Copy.theme_system;
   }
 
-  /** Cycle system -> light -> dark; the UI exposes exactly these three states. */
-  static next(mode: string): string {
-    if (mode === ThemeMode.SYSTEM) {
-      return ThemeMode.LIGHT;
-    }
-    return mode === ThemeMode.LIGHT ? ThemeMode.DARK : ThemeMode.SYSTEM;
-  }
-
   static parse(raw: string): string {
     return ThemeMode.all().includes(raw) ? raw : ThemeMode.SYSTEM;
   }

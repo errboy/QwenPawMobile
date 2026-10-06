@@ -3,6 +3,7 @@
     "pages/Index",
     "pages/SettingsPage",
     "pages/HomePage",
-    "pages/ChatPage"
+    "pages/ChatPage",
+    "pages/CleanupPage"
   ]
 }

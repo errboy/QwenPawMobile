@@ -9,9 +9,14 @@
  */
 import { AppColor, AppLine, AppRadius, AppSize, AppSpace, AppType, AppWidth } from '../../theme/Theme';
 import { NoticeTone, UiKind, UiMessage } from '../../state/UiMessage';
+import { QuoteKind } from '../../model/Attachment';
+import { Parts } from '../../model/Parts';
+import { humanBytes } from '../../core/Format';
 import { Role } from '../../core/Wire';
 import { Copy } from '../../l10n/Copy';
 import { image } from '@kit.ImageKit';
+import { pasteboard } from '@kit.BasicServicesKit';
+import { Markdown } from './Markdown';
 import { MarkdownView } from './MarkdownView';
 
 @Component
@@ -21,6 +26,42 @@ export struct Bubble {
   /** A ready image opens full-screen; the page owns that overlay, not this file. */
   onZoomImage: (key: string) => void = (): void => {};
   onToggleAudio: (key: string) => void = (): void => {};
+  /** Long-press hands the bubble to the page, which owns the composer it fills. */
+  onQuote: (item: UiMessage, kind: string) => void = (): void => {};
+  /** A document opens in an app on the phone; the store fetches its bytes first. */
+  onOpenFile: (item: UiMessage) => void = (): void => {};
+  /** Bytes this phone already holds for one reference, read for the bubble's info line. */
+  sizeOf: (ref: string) => number = (): number => 0;
+
+  /**
+   * A thought is worth reading while it is being written and rarely afterwards, so
+   * the block follows the run: open while `streaming`, folded once the answer is
+   * there. Two booleans instead of one because a tap has to override in both
+   * directions — folding a live stream, reopening a turn from the history.
+   */
+  @State private thinkOverride: boolean = false;
+  @State private thinkOpen: boolean = false;
+
+  private thinkShown(): boolean {
+    return this.thinkOverride ? this.thinkOpen : this.item.streaming;
+  }
+
+  private toggleThink(): void {
+    this.thinkOpen = !this.thinkShown();
+    this.thinkOverride = true;
+  }
+
+  /**
+   * A tool card is the machinery behind an answer, not the answer: folded unless the
+   * user asks for it. One boolean, not the reasoning block's pair — a tool call
+   * arrives whole (the reducer never marks one streaming), so there is no run state
+   * for a tap to override.
+   */
+  @State private toolOpen: boolean = false;
+
+  private toggleTool(): void {
+    this.toolOpen = !this.toolOpen;
+  }
 
   private errorTone(): boolean {
     return this.item.tone === NoticeTone.ERROR;
@@ -50,6 +91,106 @@ export struct Bubble {
     return value === undefined ? '' : value.url;
   }
 
+  /**
+   * A `data:` URI is the bytes themselves, inlined in the transcript. Pointing a
+   * new message at one would paste the whole payload into the request body, so
+   * only stored paths and URLs come back out as quotes.
+   */
+  private quotable(ref: string): boolean {
+    return ref.length > 0 && !ref.startsWith('data:');
+  }
+
+  private fileNameShown(): string {
+    return this.item.fileName.length > 0
+      ? Parts.leafOf(this.item.fileName) : Copy.chat_file_unavailable;
+  }
+
+  /**
+   * Opening costs a round trip — the bytes live on the PC — so it is offered only
+   * where there is a reference to fetch. A name with no reference is a file this
+   * phone was told about but cannot reach, and a tap on it would fail every time.
+   */
+  private openable(): boolean {
+    return this.item.fileRef.length > 0 && !this.item.fileBusy;
+  }
+
+  private viewCue(): string {
+    return this.openable() ? Copy.chat_file_view : '';
+  }
+
+  /**
+   * A bubble holding a table takes its width cap outright instead of sizing to its
+   * content. The grid inside divides a percentage, and a percentage measures
+   * against the page whenever the parent has no width of its own — that is how a
+   * three-column table once grew straight out of its own bubble.
+   */
+  private bodyW(): ResourceStr {
+    return Markdown.hasTable(this.item.text) ? AppWidth.bubble_max : 'auto';
+  }
+
+  private fileMeta(): string {
+    if (this.item.fileBusy) {
+      return Copy.chat_file_opening;
+    }
+    const ext = Parts.suffixOf(this.item.fileName);
+    const kind = ext.length === 0
+      ? Copy.chat_file_kind_unknown
+      : Copy.fill(Copy.chat_file_kind, ext.toUpperCase());
+    const size = this.item.fileRef.length === 0 ? 0 : this.sizeOf(this.item.fileRef);
+    return Copy.fill2(Copy.chat_file_meta, kind,
+      size > 0 ? Copy.fill(Copy.assets_local, humanBytes(size)) : Copy.assets_remote);
+  }
+
+  /**
+   * The clipboard gets `item.text` as it stands — the markdown source the bubble
+   * was rendered from, not the flattened picture of it. That is what makes the
+   * paste "same format": headings, lists and tables arrive intact and re-render
+   * wherever they land, instead of as a run-on paragraph.
+   */
+  private copyText(): void {
+    const data = pasteboard.createData(pasteboard.MIMETYPE_TEXT_PLAIN, this.item.text);
+    pasteboard.getSystemPasteboard().setData(data)
+      .then((): void => {
+        this.getUIContext().getPromptAction().showToast({ message: Copy.chat_copied });
+      })
+      .catch((): void => {
+        this.getUIContext().getPromptAction().showToast({ message: Copy.chat_copy_failed });
+      });
+  }
+
+  @Builder
+  quoteItem(label: string, kind: string) {
+    MenuItem({ content: label })
+      .onClick((): void => {
+        this.onQuote(this.item, kind);
+      })
+  }
+
+  @Builder
+  quoteMenu() {
+    Menu() {
+      if (this.item.text.length > 0) {
+        MenuItem({ content: Copy.chat_copy_text })
+          .onClick((): void => {
+            this.copyText();
+          })
+        this.quoteItem(Copy.chat_quote_text, QuoteKind.TEXT)
+      }
+      if (this.quotable(this.item.imageRef)) {
+        this.quoteItem(Copy.chat_quote_image, QuoteKind.IMAGE)
+      }
+      if (this.quotable(this.item.videoRef)) {
+        this.quoteItem(Copy.chat_quote_video, QuoteKind.VIDEO)
+      }
+      if (this.quotable(this.item.audioRef)) {
+        this.quoteItem(Copy.chat_quote_audio, QuoteKind.AUDIO)
+      }
+      if (this.quotable(this.item.fileRef)) {
+        this.quoteItem(Copy.chat_quote_file, QuoteKind.FILE)
+      }
+    }
+  }
+
   @Builder
   imageBlock() {
     if (this.imageReady()) {
@@ -60,6 +201,9 @@ export struct Bubble {
         .onClick(() => {
           this.onZoomImage(this.item.key);
         })
+        // A ready image is the whole bubble, and it eats the long press: without its
+        // own binding the quote menu only opens on the few pixels of margin around it.
+        .bindContextMenu(this.quoteMenu(), ResponseType.LongPress)
     } else if (this.imageBroken()) {
       Text(Copy.chat_image_unavailable)
         .fontSize(AppType.caption)
@@ -87,6 +231,7 @@ export struct Bubble {
         // over a 220vp height is 2.5:1, mostly black around a 4:3 clip.
         .width(AppWidth.bubble_max)
         .constraintSize({ maxWidth: AppSize.video_max, maxHeight: AppSize.image_max })
+        .bindContextMenu(this.quoteMenu(), ResponseType.LongPress)
     } else if (this.item.video !== undefined && this.item.video.failed) {
       Text(Copy.chat_video_unavailable)
         .fontSize(AppType.caption)
@@ -113,24 +258,46 @@ export struct Bubble {
       .onClick(() => {
         this.onToggleAudio(this.item.key);
       })
+      .bindContextMenu(this.quoteMenu(), ResponseType.LongPress)
     }
   }
 
   @Builder
   fileBlock() {
     if (this.item.fileRef.length > 0 || this.item.fileName.length > 0) {
-      Row({ space: AppSpace.xxs }) {
-        Text(`📄 ${this.item.fileName.length > 0 ? this.item.fileName : Copy.chat_file_unavailable}`)
+      Column({ space: AppSpace.xxs }) {
+        Text(`📄 ${this.fileNameShown()}`)
           .fontSize(AppType.caption)
           .fontColor(AppColor.text_secondary)
           .maxLines(2)
           .textOverflow({ overflow: TextOverflow.Ellipsis })
+        Row({ space: AppSpace.xxs }) {
+          // No layoutWeight() and no Blank(): either one lets the info line take the
+          // whole row, and the cue after it is then laid out past the card's edge and
+          // clipped — it measured to nothing on the emulator.
+          Text(this.fileMeta())
+            .fontSize(AppType.caption)
+            .fontColor(AppColor.text_quaternary)
+          Text(this.viewCue())
+            .fontSize(AppType.caption)
+            .fontColor(AppColor.accent_text)
+        }
+        .width('100%')
       }
+      .alignItems(HorizontalAlign.Start)
       .backgroundColor(AppColor.surface_subtle)
       .padding(AppSpace.sm)
       .borderRadius(AppRadius.card)
       .border({ width: AppLine.thin, color: AppColor.border_subtle })
       .constraintSize({ maxWidth: AppWidth.bubble_max })
+      .onClick(() => {
+        if (this.openable()) {
+          this.onOpenFile(this.item);
+        }
+      })
+      // Same reason the image carries its own binding: the card fills the bubble, so
+      // without it「引用这个文件」would only open on the padding under the name.
+      .bindContextMenu(this.quoteMenu(), ResponseType.LongPress)
     }
   }
 
@@ -178,28 +345,53 @@ export struct Bubble {
           this.fileBlock()
         }
         if (this.item.text.length > 0) {
-          Text(this.item.text)
-            .fontSize(AppType.message)
-            .fontColor(AppColor.text_inverse)
-            .backgroundColor(AppColor.accent)
-            .padding(AppSpace.sm)
-            .borderRadius(AppRadius.card)
-            .constraintSize({ maxWidth: AppWidth.bubble_max })
+          // The composer's own quote feature writes markdown (`> ` lines), and a
+          // plain Text would show the user the markup instead of the quote. The
+          // tint is what keeps the answer's colours out of the accent bubble.
+          Column() {
+            MarkdownView({ src: this.item.text, tint: AppColor.text_inverse })
+          }
+          .alignItems(HorizontalAlign.Start)
+          .backgroundColor(AppColor.accent)
+          .padding(AppSpace.sm)
+          .borderRadius(AppRadius.card)
+          .width(this.bodyW())
+          .constraintSize({ maxWidth: AppWidth.bubble_max })
+        }
+        if (this.item.undelivered) {
+          // Kept on screen after the history rebuild that follows a rejected send,
+          // so the text the server refused is still here to quote and re-send.
+          Text(Copy.chat_undelivered)
+            .fontSize(AppType.caption)
+            .fontColor(AppColor.error_text)
         }
       }
       .alignItems(HorizontalAlign.End)
       .width('100%')
+      .bindContextMenu(this.quoteMenu(), ResponseType.LongPress)
     } else if (this.item.kind === UiKind.TOOL) {
       Column({ space: AppSpace.xxs }) {
-        Text(Copy.fill(Copy.chat_tool_label, this.item.name))
-          .fontSize(AppType.caption)
-          .fontWeight(FontWeight.Bold)
-          .fontColor(AppColor.warning_text)
-        Text(this.item.text)
-          .fontSize(AppType.caption)
-          .fontColor(AppColor.warning_text)
-          .maxLines(4)
-          .textOverflow({ overflow: TextOverflow.Ellipsis })
+        Row({ space: AppSpace.xxs }) {
+          Text(Copy.fill(Copy.chat_tool_label, this.item.name))
+            .fontSize(AppType.caption)
+            .fontWeight(FontWeight.Bold)
+            .fontColor(AppColor.warning_text)
+            .layoutWeight(1)
+          Text(this.toolOpen ? Copy.chat_tool_collapse : Copy.chat_tool_expand)
+            .fontSize(AppType.caption)
+            .fontColor(AppColor.warning_text)
+        }
+        .width('100%')
+        .onClick((): void => {
+          this.toggleTool();
+        })
+        if (this.toolOpen) {
+          // No line cap: the text was already clipped when it was read off the wire,
+          // and a fold the user just opened should show what it holds.
+          Text(this.item.text)
+            .fontSize(AppType.caption)
+            .fontColor(AppColor.warning_text)
+        }
       }
       .alignItems(HorizontalAlign.Start)
       .backgroundColor(AppColor.warning_bg)
@@ -209,15 +401,27 @@ export struct Bubble {
       .constraintSize({ maxWidth: AppWidth.tool_max })
     } else if (this.item.kind === UiKind.REASONING) {
       Column({ space: AppSpace.xxs }) {
-        Text(Copy.chat_reasoning_label)
-          .fontSize(AppType.caption)
-          .fontColor(AppColor.text_tertiary)
-        Text(this.item.text)
-          .fontSize(AppType.caption)
-          .fontStyle(FontStyle.Italic)
-          .fontColor(AppColor.text_secondary)
-          .maxLines(6)
-          .textOverflow({ overflow: TextOverflow.Ellipsis })
+        Row({ space: AppSpace.xxs }) {
+          Text(Copy.chat_reasoning_label)
+            .fontSize(AppType.caption)
+            .fontColor(AppColor.text_tertiary)
+          Blank()
+          Text(this.thinkShown() ? Copy.chat_reasoning_collapse : Copy.chat_reasoning_expand)
+            .fontSize(AppType.caption)
+            .fontColor(AppColor.text_tertiary)
+        }
+        .width('100%')
+        .onClick((): void => {
+          this.toggleThink();
+        })
+        if (this.thinkShown()) {
+          Text(this.item.text)
+            .fontSize(AppType.caption)
+            .fontStyle(FontStyle.Italic)
+            .fontColor(AppColor.text_secondary)
+            .maxLines(6)
+            .textOverflow({ overflow: TextOverflow.Ellipsis })
+        }
       }
       .alignItems(HorizontalAlign.Start)
       .backgroundColor(AppColor.surface_subtle)
@@ -247,11 +451,13 @@ export struct Bubble {
           .padding(AppSpace.sm)
           .borderRadius(AppRadius.card)
           .border({ width: AppLine.thin, color: AppColor.border_subtle })
+          .width(this.bodyW())
           .constraintSize({ maxWidth: AppWidth.bubble_max })
         }
       }
       .alignItems(HorizontalAlign.Start)
       .width('100%')
+      .bindContextMenu(this.quoteMenu(), ResponseType.LongPress)
     }
   }
 }

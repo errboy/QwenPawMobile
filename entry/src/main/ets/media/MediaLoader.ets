@@ -13,6 +13,7 @@ import { image } from '@kit.ImageKit';
 import { util } from '@kit.ArkTS';
 import { ApiClient } from '../net/ApiClient';
 import { Parts } from '../model/Parts';
+import { CleanupFile } from '../model/Cleanup';
 import { Failure } from '../core/Failure';
 import { Log } from '../core/Log';
 import { MediaCache } from './MediaCache';
@@ -89,7 +90,7 @@ export class MediaLoader {
     try {
       return await this.resolve(ref);
     } catch (e) {
-      Log.warn(`[Media] 图片加载失败 ${ref}: ${Failure.from(e as Object).message}`);
+      Log.warn(`[Media] 图片加载失败 ${this.cache.nameOf(ref)}: ${Failure.from(e as Object).message}`);
       return MediaValue.failure();
     }
   }
@@ -129,8 +130,41 @@ export class MediaLoader {
     return this.cache.sizeBytes();
   }
 
-  clearCache(): void {
-    this.cache.clear();
+  cacheFiles(): number {
+    return this.cache.fileCount();
+  }
+
+  /** Every local copy, newest first, for the cleanup page. */
+  files(): CleanupFile[] {
+    return this.cache.files();
+  }
+
+  /** Throw away the named copies; returns how many actually went. */
+  dropFiles(names: string[]): number {
+    return this.cache.dropFiles(names);
+  }
+
+  /** One asset's local copy: how many bytes are on the phone, and dropping them. */
+  sizeOfRef(ref: string): number {
+    return this.cache.sizeOfRef(ref);
+  }
+
+  /**
+   * The on-disk name one reference would land under. The cleanup page recovers
+   * display names by hashing the refs the open stores still hold and matching
+   * them against what `files()` listed.
+   */
+  nameOf(ref: string): string {
+    return this.cache.nameOf(ref);
+  }
+
+  dropRef(ref: string): boolean {
+    return this.cache.drop(ref);
+  }
+
+  /** Sandbox path for one asset, fetching it first. Export and sharing read bytes. */
+  async localPath(ref: string): Promise<string> {
+    return await this.cache.pathFor(ref);
   }
 
   /** Logged-out or agent-switch cleanup: drop decoded bitmaps, keep nothing stale. */

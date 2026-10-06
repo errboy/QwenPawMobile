@@ -10,9 +10,14 @@
 from __future__ import annotations
 
 import asyncio
+import builtins
+import collections
 import concurrent.futures
+import contextlib
 import hashlib
 import http.client
+import io
+import ipaddress
 import json
 import os
 import random
@@ -21,6 +26,7 @@ import sys
 import tempfile
 import threading
 import time
+import types
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -345,6 +351,15 @@ def cidr_suite(tmp: Path, stub_port: int) -> None:
     check("网段外的地址连鉴权面都摸不到", probe[0] == 403, str(probe[0]))
     code, _, _ = call("GET", "/ping", port, token="whatever")
     check("网段外的地址业务路由也 403", code == 403, str(code))
+    # The response alone is not the contract: a first-time user with a wrong
+    # allow_cidrs sees a 403 on the phone and has no way to learn which address
+    # to whitelist. The gate log has to name it.
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        call("GET", "/api/auth/status", port)
+    check("网段拒绝在守门代理日志里点出被拒地址与生效网段",
+          "403 拒绝" in buf.getvalue() and "10.99.0.0/16" in buf.getvalue(),
+          repr(buf.getvalue()[:160]))
 
 
 def upstream_missing_suite(tmp: Path, stub_port: int) -> None:
@@ -511,6 +526,193 @@ def external_output_suite() -> None:
     check("非零退出不抛，交回调用方判断", missing.returncode == 3,
           str(missing.returncode))
 
+    # Same family: log() sits on the request path, and serve()'s except branch
+    # logs too, so a print that raises would abort an in-flight transfer.
+    dead = io.StringIO()
+    dead.close()
+    saved, raised = sys.stdout, None
+    sys.stdout = dead
+    try:
+        qp_gate.log("stdout 已经关掉了")
+    except BaseException as exc:  # noqa: BLE001 - the check is exactly this
+        raised = repr(exc)
+    finally:
+        sys.stdout = saved
+    check("stdout 关掉时 log 不抛，正在转发的请求不会被一行日志带走",
+          raised is None, str(raised))
+
+
+def address_suite(tmp: Path) -> None:
+    """首启那三个新函数：探测本机地址、折成 /24、把手机该填的地址说出来。"""
+    check("suggest_cidr 把本机地址折成它所在的 /24",
+          qp_gate.suggest_cidr("192.168.13.7") == "192.168.13.0/24")
+    found = qp_gate.local_ipv4s()
+    check("local_ipv4s 只给可解析的非回环 IPv4",
+          all(ipaddress.ip_address(a).version == 4 and not a.startswith("127.")
+              for a in found),
+          str(found))
+
+    loopback = qp_gate.Config(gate_config(tmp, 0, listen_host="127.0.0.1"), tmp)
+    lines = qp_gate.phone_urls(loopback)
+    check("只绑回环时横幅直说手机连不到，而不是打一个填不了的地址",
+          any("连不到" in line for line in lines), str(lines))
+
+    wide = qp_gate.Config(gate_config(tmp, 0, listen_host="0.0.0.0",
+                                      listen_port=61700), tmp)
+    saved = qp_gate.local_ipv4s
+    qp_gate.local_ipv4s = lambda: ["192.168.13.7", "10.0.0.5"]
+    try:
+        lines = qp_gate.phone_urls(wide)
+    finally:
+        qp_gate.local_ipv4s = saved
+    check("多网卡时逐条列出手机要填的地址，默认路由出口在最前",
+          lines == ["手机填: http://192.168.13.7:61700",
+                    "手机填: http://10.0.0.5:61700"], str(lines))
+    check("横幅里不会出现 0.0.0.0 这种填不进手机的地址",
+          all("0.0.0.0" not in line for line in lines), str(lines))
+
+    path = Path(tmp) / "no-user.json"
+    raw = gate_config(path, 0)
+    raw.pop("username")
+    raw.pop("credential")
+    path.write_text(json.dumps(raw), encoding="utf-8")
+    check("--show 读得动还没设账号的配置（只解析不校验）",
+          qp_gate.Config.read(path).username == "")
+    try:
+        qp_gate.Config.load(path)
+        accepted = True
+    except SystemExit:
+        accepted = False
+    check("真正启动仍然要求账号", accepted is False)
+
+
+def config_suite(tmp: Path) -> None:
+    """日常改配置那条路：回车必须等于不动，改端口不许顺手把令牌作废。
+
+    --init --force 会重生成 token_secret，拿它当"改配置"用等于每改一次端口手机就得
+    重新登录一次；--edit 存在的全部意义就是把这两件事拆开。
+    """
+    check("parse_port 空回答保持原值", qp_gate.parse_port("", 61700) == 61700)
+    check("parse_port 非数字保持原值", qp_gate.parse_port("abc", 61700) == 61700)
+    check("parse_port 越界端口保持原值",
+          qp_gate.parse_port("70000", 61700) == 61700
+          and qp_gate.parse_port("80", 61700) == 61700)
+    check("parse_port 接受自定义的合法端口", qp_gate.parse_port("8088", 61700) == 8088)
+
+    real_input = builtins.input
+    saved_ipv4s = qp_gate.local_ipv4s
+    qp_gate.local_ipv4s = lambda: ["192.168.13.7"]
+
+    def answers(values):
+        queue = collections.deque(values)
+        builtins.input = lambda prompt="": queue.popleft()
+
+    try:
+        answers([""])
+        check("ask_cidrs 回车拿的是当前网段，不是这一刻探测到的网卡",
+              qp_gate.ask_cidrs(["10.0.0.0/24"]) == ["10.0.0.0/24"])
+        answers(["192.168.9.0/24"])
+        check("ask_cidrs 仍然可以自定义成别的网段",
+              qp_gate.ask_cidrs(["10.0.0.0/24"]) == ["192.168.9.0/24"])
+        answers(["-"])
+        check("ask_cidrs 输入 - 仍然表示不限网段",
+              qp_gate.ask_cidrs(["10.0.0.0/24"]) == [])
+    finally:
+        builtins.input = real_input
+
+    path = Path(tmp) / "edit.json"
+    raw_cfg = gate_config(path, 59999, listen_port=61700)
+    raw_cfg["allow_cidrs"] = ["10.0.0.0/24"]
+    path.write_text(json.dumps(raw_cfg), encoding="utf-8")
+    before = json.loads(path.read_text(encoding="utf-8"))
+
+    calls = []
+    saved_probe = qp_gate.probe_upstream
+    saved_firewall = qp_gate.ensure_firewall_rule
+    saved_show = qp_gate.show_config
+    saved_default = qp_gate.DEFAULT_CONFIG
+    qp_gate.probe_upstream = lambda host, port, timeout=2.0: True
+    qp_gate.ensure_firewall_rule = lambda port: calls.append(port) or True
+    qp_gate.show_config = lambda config: calls.append("shown")
+    try:
+        answers(["n", "", "", ""])
+        qp_gate.edit_config(path)
+        after = json.loads(path.read_text(encoding="utf-8"))
+        check("一路回车 = 配置文件一个字都不变", after == before, str(after))
+        check("没改端口就不会去动防火墙", calls == ["shown"], str(calls))
+
+        answers(["n", "61701", "-", ""])
+        qp_gate.edit_config(path)
+        after = json.loads(path.read_text(encoding="utf-8"))
+        check("--edit 能把监听端口改成自定义值", after["listen_port"] == 61701)
+        check("--edit 换端口绝不重生成 token_secret（手机不该被登出）",
+              after["token_secret"] == before["token_secret"])
+        check("--edit 不动登录口令", after["credential"] == before["credential"])
+        check("上游端口可以从钉死改回自动发现", after["upstream_port"] == 0)
+        check("演练用的 --config 改端口不动系统防火墙"
+              "（README 教人拿临时文件演练，留下永久放行没人会想起来删）",
+              61701 not in calls, str(calls))
+
+        qp_gate.DEFAULT_CONFIG = path
+        answers(["n", "61700", "", ""])
+        qp_gate.edit_config(path)
+        check("改真实配置的端口会补防火墙规则（旧规则只放行旧端口）",
+              61700 in calls, str(calls))
+
+        answers(["n", "", "59999", "-"])
+        qp_gate.DEFAULT_CONFIG = Path(tmp) / "somewhere-else.json"
+        qp_gate.edit_config(path)
+        after = json.loads(path.read_text(encoding="utf-8"))
+        check("--edit 能把网段清空成不限，同时保留没问的字段",
+              after["allow_cidrs"] == [] and after["listen_port"] == 61700, str(after))
+    finally:
+        builtins.input = real_input
+        qp_gate.probe_upstream = saved_probe
+        qp_gate.local_ipv4s = saved_ipv4s
+        qp_gate.ensure_firewall_rule = saved_firewall
+        qp_gate.show_config = saved_show
+        qp_gate.DEFAULT_CONFIG = saved_default
+
+
+def firewall_suite() -> None:
+    """放行成没成，只能回头看规则在不在。
+
+    Start-Process -Verb RunAs 只负责把 netsh 拉起来：UAC 弹窗被取消、或者压根没提升
+    权限，它照样返回 0。旧版把"拉起来了"当"已放行"打出去，于是手机连不上而日志里
+    写着成功——这台机器上真实发生过一次。
+    """
+    saved_shown = qp_gate.shown_rule
+    saved_run = qp_gate.run_captured
+    qp_gate.shown_rule = lambda: "规则名称: qp-gate\n本地端口: 61700"
+    check("规则已经覆盖这个端口时不再重复添加",
+          qp_gate.firewall_rule_covers(61700)
+          and not qp_gate.firewall_rule_covers(61701))
+
+    launched = []
+
+    def fake_run(argv, timeout):
+        launched.append(argv)
+        return types.SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    qp_gate.run_captured = fake_run
+    qp_gate.shown_rule = lambda: "没有匹配的规则。"
+    if os.name == "nt":
+        check("提权进程返回 0 但规则没落地，也必须报未放行",
+              qp_gate.ensure_firewall_rule(61799) is False and bool(launched))
+        check("报告未放行时把可以照抄的 netsh 命令打出来",
+              launched and "localport=61799" in launched[-1][-1])
+        qp_gate.shown_rule = lambda: "规则名称: qp-gate\n本地端口: 61700"
+        launched.clear()
+        check("删除后规则还在（弹窗没批准）就不能说已删除",
+              qp_gate.remove_firewall_rule() is False)
+        qp_gate.shown_rule = lambda: "没有匹配的规则。"
+        check("规则确实没了才说已删除", qp_gate.remove_firewall_rule() is True)
+    else:
+        check("非 Windows 上不动防火墙，只提示自行放行",
+              qp_gate.ensure_firewall_rule(61799) is True and not launched)
+    qp_gate.shown_rule = saved_shown
+    qp_gate.run_captured = saved_run
+
 
 def main() -> int:
     holder = {}
@@ -547,6 +749,9 @@ def main() -> int:
         upstream_missing_suite(Path(tmpdir) / "dead.json", stub_port)
         discovery_suite(stub_port)
         external_output_suite()
+        address_suite(Path(tmpdir))
+        config_suite(Path(tmpdir))
+        firewall_suite()
 
     total = len(RESULTS)
     passed = sum(1 for _n, ok in RESULTS if ok)

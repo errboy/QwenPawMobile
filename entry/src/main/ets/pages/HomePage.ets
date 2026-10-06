@@ -6,6 +6,7 @@
  * store's fields into @State so ArkUI re-renders.
  */
 import { common } from '@kit.AbilityKit';
+import { LengthMetrics } from '@kit.ArkUI';
 import { AppButton } from '../ui/common/AppButton';
 import { ForegroundCard, SessionRow } from '../ui/home/SessionRow';
 import { ChannelGroup, ChannelGroups } from '../ui/home/ChannelGroups';
@@ -13,6 +14,7 @@ import { AppColor, AppLine, AppMeasure, AppRadius, AppSpace, AppType } from '../
 import { ThemeManager, ThemeMode } from '../theme/ThemeManager';
 import { Copy } from '../l10n/Copy';
 import { Bp } from '../core/Breakpoint';
+import { humanBytes } from '../core/Format';
 import { AgentSummary, ChatRef, ChatSpec } from '../model/Dtos';
 import { Failure } from '../core/Failure';
 import { ChatPreferences, Settings } from '../core/Prefs';
@@ -33,7 +35,10 @@ struct HomePage {
   @State bgCount: number = 0;
   @State foregroundId: string = '';
   @State foreground: ChatSpec = new ChatSpec();
-  @State themeName: string = '';
+  /** Kept in state so the picker's tick follows a pick on the same visit. */
+  @State themeMode: string = ThemeMode.SYSTEM;
+  /** Told to true by the theme button; the menu writes it back when it closes. */
+  @State themeOpen: boolean = false;
   @State expanded: string[] = [];
   /** Hide every window but the main one. Nothing here stops the poller. */
   @State compact: boolean = false;
@@ -46,7 +51,6 @@ struct HomePage {
   @State draftCount: number = 0;
   /** Created once so detach can identify the same closure. */
   private pull: () => void = (): void => {};
-  private jumped: boolean = false;
 
   private hub(): StoreHub {
     return StoreHub.shared();
@@ -100,30 +104,13 @@ struct HomePage {
   }
 
   /**
-   * Give back what the phone is holding. Chat transcripts are deliberately not
-   * part of this: they live on the PC, and deleting one from a phone would erase
-   * it for every device that shares the account.
+   * Cleanup is a page, not a tap. What the phone holds is split into categories
+   * that cost very different amounts to undo — re-downloading a clip is free,
+   * retyping a saved password is not — so the choice belongs on its own screen
+   * with a confirmation behind it.
    */
-  private clearLocal(): void {
-    const ctx = this.ctx();
-    if (ctx === undefined) {
-      return;
-    }
-    this.hub().clearLocal(ctx).then((): void => {
-      this.refreshStorage();
-    }).catch((err: Object): void => {
-      this.notice = Copy.fill(Copy.notice_clear_failed, Failure.from(err).message);
-    });
-  }
-
-  private sizeText(bytes: number): string {
-    if (bytes < 1024) {
-      return `${bytes} B`;
-    }
-    if (bytes < 1024 * 1024) {
-      return `${(bytes / 1024).toFixed(1)} KB`;
-    }
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  private openCleanup(): void {
+    this.getUIContext().getRouter().pushUrl({ url: 'pages/CleanupPage' });
   }
 
   private sync(): void {
@@ -141,20 +128,7 @@ struct HomePage {
     if (fg !== undefined) {
       this.foreground = fg;
     }
-    this.themeName = ThemeMode.label(ThemeManager.current());
-    this.autoJump();
-  }
-
-  /** First entry lands straight in the chat the phone was reading. */
-  private autoJump(): void {
-    if (this.jumped || this.chats.length === 0) {
-      return;
-    }
-    this.jumped = true;
-    const fg = this.hub().app.foregroundChat();
-    if (fg !== undefined) {
-      this.openChat(fg);
-    }
+    this.themeMode = ThemeManager.current();
   }
 
   private chatsOf(group: ChannelGroup): ChatSpec[] {
@@ -306,15 +280,34 @@ struct HomePage {
     this.hub().app.openChat(ctx, ref);
   }
 
-  private cycleTheme(): void {
+  /**
+   * The three states as a picker rather than a cycle: a cycle shows one name per
+   * tap and makes the user step through the modes to reach the one they want.
+   */
+  private themeMenu(): MenuElement[] {
+    const out: MenuElement[] = [];
+    for (const mode of ThemeMode.all()) {
+      const m = mode;
+      const label = ThemeMode.label(m);
+      const item: MenuElement = {
+        value: m === this.themeMode ? `✓ ${label}` : label,
+        action: (): void => {
+          this.pickTheme(m);
+        }
+      };
+      out.push(item);
+    }
+    return out;
+  }
+
+  private pickTheme(mode: string): void {
     const ctx = this.ctx();
-    if (ctx === undefined) {
+    if (ctx === undefined || mode === this.themeMode) {
       return;
     }
-    ThemeManager.choose(ctx, ThemeMode.next(ThemeManager.current()))
-      .then((mode: string): void => {
-        this.themeName = ThemeMode.label(mode);
-      });
+    ThemeManager.choose(ctx, mode).then((applied: string): void => {
+      this.themeMode = applied;
+    });
   }
 
   private logout(): void {
@@ -335,30 +328,64 @@ struct HomePage {
   }
 
   @Builder
+  headerButtons() {
+    AppButton({
+      label: Copy.home_theme,
+      quiet: true,
+      onTap: (): void => {
+        this.themeOpen = true;
+      }
+    })
+      // The plain bindMenu(content) form binds to the __Common__ node this custom
+      // component generates, where the inner Button wins the tap and the menu never
+      // opens (seen on the emulator). The isShow overload is driven by state instead,
+      // so no gesture has to reach that node; onWillDisappear hands the flag back.
+      .bindMenu(this.themeOpen, this.themeMenu(), {
+        onWillDisappear: (): void => {
+          this.themeOpen = false;
+        }
+      })
+    AppButton({
+      label: Copy.home_logout,
+      quiet: true,
+      onTap: (): void => {
+        this.logout();
+      }
+    })
+  }
+
+  @Builder
   header() {
     Column({ space: AppSpace.xs }) {
-      Row({ space: AppSpace.sm }) {
-        Text(Copy.home_title)
-          .fontSize(AppType.title)
-          .fontWeight(FontWeight.Bold)
-          .fontColor(AppColor.text)
-        Blank()
-        AppButton({
-          label: Copy.fill(Copy.home_theme, this.themeName),
-          quiet: true,
-          onTap: (): void => {
-            this.cycleTheme();
-          }
-        })
-        AppButton({
-          label: Copy.home_logout,
-          quiet: true,
-          onTap: (): void => {
-            this.logout();
-          }
-        })
+      if (this.wBp === Bp.xs) {
+        // At xs the title itself measured one glyph (39px of 720px at 240vp),
+        // so it is dropped rather than rendered as "Q…". The two buttons alone
+        // can still outgrow the row once the font scale is turned up (measured
+        // at 240vp, "特大": 507px + 200px against 624px of content, the logout
+        // label clipped at the window edge), so this row wraps instead of
+        // squeezing; at standard scale both still share one line, right-aligned.
+        Flex({
+          wrap: FlexWrap.Wrap,
+          justifyContent: FlexAlign.End,
+          alignItems: ItemAlign.Center,
+          space: { main: LengthMetrics.resource(AppSpace.sm), cross: LengthMetrics.resource(AppSpace.sm) }
+        }) {
+          this.headerButtons()
+        }
+        .width('100%')
+      } else {
+        Row({ space: AppSpace.sm }) {
+          Text(Copy.home_title)
+            .fontSize(AppType.title)
+            .fontWeight(FontWeight.Bold)
+            .fontColor(AppColor.text)
+            .maxLines(1)
+            .textOverflow({ overflow: TextOverflow.Ellipsis })
+            .layoutWeight(1)
+          this.headerButtons()
+        }
+        .width('100%')
       }
-      .width('100%')
 
       Text(Copy.fill(Copy.home_server_line, this.server)
         + '    '
@@ -368,16 +395,21 @@ struct HomePage {
         .fontColor(AppColor.text_tertiary)
         .width('100%')
 
-      Row({ space: AppSpace.sm }) {
+      // Wrapping, not one Row: a long agent name takes the whole row and the
+      // status chips — the approval one being this page's only way in to pending
+      // approvals — are then measured past the window edge, off screen.
+      Flex({ wrap: FlexWrap.Wrap, alignItems: ItemAlign.Center }) {
         Text(Copy.home_agent_label)
           .fontSize(AppType.body)
           .fontColor(AppColor.text_secondary)
+          .margin({ right: AppSpace.sm })
         if (this.agents.length > 0) {
           Select(this.agentOptions())
             .value(this.agentText)
             .font({ size: AppType.body })
             .fontColor(AppColor.accent_text)
             .selected(this.agentIndex())
+            .constraintSize({ maxWidth: '100%' })
             .onSelect((index: number): void => {
               this.pickAgent(index);
             })
@@ -385,12 +417,16 @@ struct HomePage {
           Text(this.agentText)
             .fontSize(AppType.body)
             .fontColor(AppColor.accent_text)
+            .maxLines(1)
+            .textOverflow({ overflow: TextOverflow.Ellipsis })
+            .constraintSize({ maxWidth: '100%' })
         }
         Blank()
         if (this.pendingCount > 0) {
           Text(Copy.fillN(Copy.home_approvals, this.pendingCount))
             .fontSize(AppType.caption)
             .fontColor(AppColor.error_text)
+            .margin({ left: AppSpace.sm })
             .onClick(() => {
               this.jumpToApproval();
             })
@@ -399,6 +435,7 @@ struct HomePage {
           Text(Copy.fillN(Copy.home_bg_running, this.bgCount))
             .fontSize(AppType.caption)
             .fontColor(AppColor.success)
+            .margin({ left: AppSpace.sm })
         }
       }
       .width('100%')
@@ -471,14 +508,14 @@ struct HomePage {
   }
 
   /**
-   * Local storage and the one tap that gives it back. It sits outside the list
-   * because it is about the device, not about any one conversation.
+   * Local storage and the way to clean it. It sits outside the list because it is
+   * about the device, not about any one conversation.
    */
   @Builder
   storageBar() {
     Row({ space: AppSpace.sm }) {
       Column({ space: AppSpace.xxs }) {
-        Text(Copy.fillN2(Copy.home_storage_line, this.sizeText(this.mediaBytes), this.draftCount))
+        Text(Copy.fillN2(Copy.home_storage_line, humanBytes(this.mediaBytes), this.draftCount))
           .fontSize(AppType.caption)
           .fontColor(AppColor.text_secondary)
         Text(Copy.home_storage_note)
@@ -494,7 +531,7 @@ struct HomePage {
         label: Copy.home_storage_clear,
         quiet: true,
         onTap: (): void => {
-          this.clearLocal();
+          this.openCleanup();
         }
       })
     }

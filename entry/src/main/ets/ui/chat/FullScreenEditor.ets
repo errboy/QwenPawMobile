@@ -5,7 +5,7 @@
  * Provides a distraction-free editing experience with send/cancel actions.
  */
 import { AppButton } from '../common/AppButton';
-import { AppColor, AppLine, AppMeasure, AppRadius, AppSize, AppSpace, AppType } from '../../theme/Theme';
+import { AppColor, AppLine, AppMeasure, AppSpace, AppType } from '../../theme/Theme';
 import { Copy } from '../../l10n/Copy';
 import { Bp } from '../../core/Breakpoint';
 

@@ -3,6 +3,7 @@
  * normalised into a Failure at the boundary that produced them, so the UI never
  * has to inspect a raw BusinessError or sniff an HTTP status out of a message.
  */
+import { Http } from './Wire';
 
 export enum FailureKind {
   NoServer,
@@ -41,22 +42,22 @@ export class Failure extends Error {
   }
 
   private static byStatus(status: number): FailureKind {
-    if (status === 401) {
+    if (status === Http.UNAUTHORIZED) {
       return FailureKind.Unauthorized;
     }
-    if (status === 403) {
+    if (status === Http.FORBIDDEN) {
       return FailureKind.Forbidden;
     }
-    if (status === 404) {
+    if (status === Http.NOT_FOUND) {
       return FailureKind.NotFound;
     }
-    if (status === 409) {
+    if (status === Http.CONFLICT) {
       return FailureKind.Conflict;
     }
-    if (status === 423) {
+    if (status === Http.LOCKED) {
       return FailureKind.Locked;
     }
-    if (status === 429) {
+    if (status === Http.TOO_MANY) {
       return FailureKind.TooMany;
     }
     return status >= 500 ? FailureKind.Server : FailureKind.Rejected;

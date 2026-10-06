@@ -6,6 +6,7 @@
 import { Failure, FailureKind } from '../core/Failure';
 import { Log } from '../core/Log';
 import { ApiPath, Http } from '../core/Wire';
+import { Copy } from '../l10n/Copy';
 import { RequestSpec, ResponseShape, Transport } from './Transport';
 import { SseHandler, SseSession } from './SseSession';
 
@@ -44,7 +45,14 @@ export class ApiClient {
     return s;
   }
 
-  /** Absolute stored path -> preview sub-path; slashes and percent encoding. */
+  /**
+   * Absolute stored path -> preview sub-path; slashes and percent encoding.
+   *
+   * `.` and `..` are dropped rather than encoded: encodeURIComponent leaves them
+   * as literal dots, so a path quoted out of a transcript would travel as
+   * `/api/files/preview/../..` with the bearer header on it and could read outside
+   * the preview root. A real stored path never contains a dot segment.
+   */
   static encodePreviewPath(storedPath: string): string {
     let p = storedPath.split('\\').join('/');
     while (p.startsWith('/')) {
@@ -52,7 +60,7 @@ export class ApiClient {
     }
     const segments: string[] = [];
     for (const s of p.split('/')) {
-      if (s.length > 0) {
+      if (s.length > 0 && s !== '.' && s !== '..') {
         segments.push(encodeURIComponent(s));
       }
     }
@@ -147,7 +155,7 @@ export class ApiClient {
 
   private spec(method: string, path: string): RequestSpec {
     if (!this.isConfigured()) {
-      throw Failure.local('服务器地址未配置');
+      throw Failure.local(Copy.notice_no_base_url);
     }
     const spec = new RequestSpec();
     spec.method = method;

@@ -12,7 +12,7 @@
  * only ever sizes to its content, so a short reply is still a short bubble.
  */
 import { AppColor, AppFont, AppLine, AppRadius, AppSpace, AppType } from '../../theme/Theme';
-import { MdBlock, MdKind, MdRun, Markdown } from './Markdown';
+import { MdAlign, MdBlock, MdCell, MdKind, MdRow, MdRun, Markdown } from './Markdown';
 
 @Component
 export struct MarkdownView {
@@ -46,14 +46,47 @@ export struct MarkdownView {
       last.lines[at] = at < 0 ? '▍' : `${last.lines[at]} ▍`;
       return;
     }
+    if (last.kind === MdKind.table) {
+      // A table under construction still has cells to land the caret in; the last
+      // row's last cell is where the next token will turn up.
+      const rows: MdRow[] = last.rows;
+      if (rows.length > 0) {
+        const cells: MdCell[] = rows[rows.length - 1].cells;
+        if (cells.length > 0) {
+          cells[cells.length - 1].runs.push(MarkdownView.caret());
+        }
+      }
+      return;
+    }
+    last.runs.push(MarkdownView.caret());
+  }
+
+  private static caret(): MdRun {
     const run = new MdRun();
     run.text = ' ▍';
-    last.runs.push(run);
+    return run;
+  }
+
+  private static rowLen(row: MdRow): number {
+    let n: number = 0;
+    for (const cell of row.cells) {
+      n += MarkdownView.cellLen(cell);
+    }
+    return n;
+  }
+
+  private static cellLen(cell: MdCell): number {
+    let n: number = 0;
+    for (const run of cell.runs) {
+      n += run.text.length;
+    }
+    return n;
   }
 
   /**
    * A block's own text length is part of its key on purpose: without it a growing
-   * stream keeps the same key and ForEach hands back the stale child.
+   * stream keeps the same key and ForEach hands back the stale child. Table cells
+   * count too, or a row that gains a word mid-stream never redraws.
    */
   private sig(block: MdBlock, index: number): string {
     let n: number = 0;
@@ -62,6 +95,9 @@ export struct MarkdownView {
     }
     for (let i = 0; i < block.lines.length; i++) {
       n += block.lines[i].length;
+    }
+    for (let i = 0; i < block.rows.length; i++) {
+      n += MarkdownView.rowLen(block.rows[i]);
     }
     return `${index}:${block.kind}:${block.depth}:${block.marker}:${n}`;
   }
@@ -74,9 +110,9 @@ export struct MarkdownView {
   }
 
   @Builder
-  runs(block: MdBlock, size: Resource, forceBold: boolean) {
+  runs(items: MdRun[], size: Resource, forceBold: boolean) {
     Text() {
-      ForEach(block.runs, (run: MdRun) => {
+      ForEach(items, (run: MdRun) => {
         if (run.code) {
           Span(run.text)
             .fontFamily(AppFont.mono)
@@ -123,7 +159,7 @@ export struct MarkdownView {
         .fontSize(this.bodySize)
         .fontColor(AppColor.text_tertiary)
       Column() {
-        this.runs(block, this.bodySize, false)
+        this.runs(block.runs, this.bodySize, false)
       }
       .alignItems(HorizontalAlign.Start)
       .layoutWeight(1)
@@ -134,11 +170,58 @@ export struct MarkdownView {
   @Builder
   quoteBlock(block: MdBlock) {
     Column() {
-      this.runs(block, this.bodySize, false)
+      this.runs(block.runs, this.bodySize, false)
     }
     .alignItems(HorizontalAlign.Start)
     .border({ width: { left: AppLine.emphasis }, color: AppColor.border_strong })
     .padding({ left: AppSpace.sm })
+  }
+
+  private static alignOf(align: string): HorizontalAlign {
+    if (align === MdAlign.center) {
+      return HorizontalAlign.Center;
+    }
+    return align === MdAlign.right ? HorizontalAlign.End : HorizontalAlign.Start;
+  }
+
+  /**
+   * Equal-weight columns inside a full-width grid, at the smaller font: a bubble
+   * is two thirds of a phone, and at body size a two-word cell wraps every line.
+   * Cells wrap rather than scroll, so a long cell makes its column taller, never
+   * cut off. The desktop draws the same table wider; that is the screen, not us.
+   */
+  @Builder
+  tableBlock(block: MdBlock) {
+    Column() {
+      ForEach(block.rows, (row: MdRow, ri: number) => {
+        Row() {
+          ForEach(row.cells, (cell: MdCell) => {
+            Column() {
+              this.runs(cell.runs, AppType.secondary, row.head)
+            }
+            .layoutWeight(1)
+            .alignItems(MarkdownView.alignOf(cell.align))
+            .padding({
+              left: AppSpace.xs,
+              right: AppSpace.xs,
+              top: AppSpace.xxs,
+              bottom: AppSpace.xxs
+            })
+          }, (cell: MdCell, ci: number) => `${ci}:${MarkdownView.cellLen(cell)}`)
+        }
+        .width('100%')
+        .alignItems(VerticalAlign.Top)
+        .backgroundColor(row.head ? AppColor.surface_sunken : Color.Transparent)
+        .border({
+          width: { bottom: ri === block.rows.length - 1 ? 0 : AppLine.thin },
+          color: AppColor.border_subtle
+        })
+      }, (row: MdRow, ri: number) => `${ri}:${row.head ? 'h' : 'b'}:${MarkdownView.rowLen(row)}`)
+    }
+    .width('100%')
+    .border({ width: AppLine.thin, color: AppColor.border_subtle })
+    .borderRadius(AppRadius.control)
+    .clip(true)
   }
 
   build() {
@@ -152,16 +235,18 @@ export struct MarkdownView {
 
         } else if (block.kind === MdKind.head) {
           Column() {
-            this.runs(block, this.headSize(block), true)
+            this.runs(block.runs, this.headSize(block), true)
           }
           .alignItems(HorizontalAlign.Start)
         } else if (block.kind === MdKind.list) {
           this.listBlock(block)
         } else if (block.kind === MdKind.quote) {
           this.quoteBlock(block)
+        } else if (block.kind === MdKind.table) {
+          this.tableBlock(block)
         } else {
           Column() {
-            this.runs(block, this.bodySize, false)
+            this.runs(block.runs, this.bodySize, false)
           }
           .alignItems(HorizontalAlign.Start)
         }

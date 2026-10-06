@@ -235,6 +235,14 @@ export class UploadApi {
 
   /** Upload one attachment; `url` in the result is the server-side stored path. */
   async upload(a: Attachment): Promise<UploadResult> {
+    if (a.ref.length > 0) {
+      // A quoted message already names a stored path. Fetching the bytes back to
+      // re-upload them would put the same clip on the server twice under a new name.
+      const reused = new UploadResult();
+      reused.url = a.ref;
+      reused.file_name = a.name;
+      return reused;
+    }
     const body = this.compose(a);
     const raw = await this.client.uploadMultipart(ApiPath.CONSOLE_UPLOAD, body.boundary, body.bytes);
     const parsed = JSON.parse(raw) as UploadResult;
@@ -258,17 +266,32 @@ export class UploadApi {
 
   private compose(a: Attachment): MultipartBody {
     const boundary = this.boundaryName();
+    const enc = new util.TextEncoder();
+    const head = enc.encodeInto(`--${boundary}\r\nContent-Disposition: form-data; `
+      + `name="file"; filename="${UploadApi.sanitizeFileName(a.name)}"\r\n`
+      + `Content-Type: ${a.mime}\r\n\r\n`);
+    const tail = enc.encodeInto(`\r\n--${boundary}--\r\n`);
+    // A quoted message too long for the composer is sent as the text file it was
+    // turned into. Those bytes are already in memory, so they go straight into
+    // the body: no temp file has to survive from the quote to the send.
+    if (a.text.length > 0) {
+      const payload = enc.encodeInto(a.text);
+      if (payload.byteLength > MAX_UPLOAD_BYTES) {
+        throw Failure.local(Copy.fillN2(Copy.notice_file_too_large, a.name, MAX_UPLOAD_MB));
+      }
+      const bytes = new ArrayBuffer(head.byteLength + payload.byteLength + tail.byteLength);
+      const out = new Uint8Array(bytes);
+      out.set(UploadApi.asBytes(head), 0);
+      out.set(UploadApi.asBytes(payload), head.byteLength);
+      out.set(UploadApi.asBytes(tail), head.byteLength + payload.byteLength);
+      return UploadApi.wrap(boundary, bytes);
+    }
     const file = fs.openSync(a.uri, fs.OpenMode.READ_ONLY);
     try {
       const size = UploadApi.statSize(file.fd, a.name);
       if (size > MAX_UPLOAD_BYTES) {
         throw Failure.local(Copy.fillN2(Copy.notice_file_too_large, a.name, MAX_UPLOAD_MB));
       }
-      const enc = new util.TextEncoder();
-      const head = enc.encodeInto(`--${boundary}\r\nContent-Disposition: form-data; `
-        + `name="file"; filename="${UploadApi.sanitizeFileName(a.name)}"\r\n`
-        + `Content-Type: ${a.mime}\r\n\r\n`);
-      const tail = enc.encodeInto(`\r\n--${boundary}--\r\n`);
       // The body is allocated as an ArrayBuffer up front: a typed array's own
       // .buffer is ArrayBufferLike, which is not assignable where an ArrayBuffer
       // is required.
@@ -277,13 +300,21 @@ export class UploadApi {
       out.set(new Uint8Array(head.buffer, head.byteOffset, head.byteLength), 0);
       UploadApi.copyInto(file.fd, size, out, head.byteLength, a.name);
       out.set(new Uint8Array(tail.buffer, tail.byteOffset, tail.byteLength), head.byteLength + size);
-      const body = new MultipartBody();
-      body.boundary = boundary;
-      body.bytes = bytes;
-      return body;
+      return UploadApi.wrap(boundary, bytes);
     } finally {
       fs.closeSync(file);
     }
+  }
+
+  private static asBytes(view: Uint8Array): Uint8Array {
+    return new Uint8Array(view.buffer, view.byteOffset, view.byteLength);
+  }
+
+  private static wrap(boundary: string, bytes: ArrayBuffer): MultipartBody {
+    const body = new MultipartBody();
+    body.boundary = boundary;
+    body.bytes = bytes;
+    return body;
   }
 
   /**

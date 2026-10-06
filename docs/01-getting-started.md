@@ -14,7 +14,7 @@ agent 运行时——模型、工具执行、会话历史全部在本机桌面�
 第 3 点是有意为之的边界：审批永远由人点，代码里没有任何自动批准路径。
 
 手机不写桌面端的全局配置。`/workspace/running-config`、`/settings/upload-limit`
-这些端点在本工程里**只读**（`core/Wire.ets:108-116` 的注释记录了原因：
+这些端点在本工程里**只读**（`core/Wire.ets:124-126` 的注释记录了原因：
 PUT 是整文档替换，误点一次就把桌面端配置改写了）。
 
 ## 你需要什么
@@ -61,6 +61,8 @@ docs/                本套文档
 
 ## 下一步
 
+- **不想读实现，只想装上用** → [10-deploy-and-use.md](10-deploy-and-use.md)（含装机后每个功能怎么用）
+- **让 AI 助手替你跑这套流程** → [11-agent-playbook.md](11-agent-playbook.md)
 - 构建与签名细节 → [02-build-and-sign.md](02-build-and-sign.md)
 - 装到真机/模拟器 → [03-run-on-device.md](03-run-on-device.md)
 - 和桌面端打通 → [04-desktop-cooperation.md](04-desktop-cooperation.md)

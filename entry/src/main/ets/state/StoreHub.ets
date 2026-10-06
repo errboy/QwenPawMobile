@@ -15,10 +15,12 @@ import { ComposerApi } from '../api/ComposerApi';
 import { UploadApi } from '../api/UploadApi';
 import { ApiClient } from '../net/ApiClient';
 import { ChatPreferences } from '../core/Prefs';
+import { CleanupPicks, CleanupTally } from '../model/Cleanup';
 import { HttpTransport } from '../net/HttpTransport';
 import { Transport } from '../net/Transport';
 import { MediaLoader } from '../media/MediaLoader';
 import { AudioPlayer } from '../media/AudioPlayer';
+import { Parts } from '../model/Parts';
 import { ChatRef } from '../model/Dtos';
 import { GlobalPoller } from '../polling/GlobalPoller';
 import { AppStore } from './AppStore';
@@ -116,18 +118,81 @@ export class StoreHub {
   }
 
   /**
-   * Local cleanup, from the home page: the clips this phone cached for playback
-   * and the drafts it was holding. Nothing here touches the server's transcript —
-   * deleting a window is the PC's decision, and a phone tap must not erase it for
-   * every device that shares the account.
+   * Read the device for the cleanup page: every local copy with its size and last
+   * write, sorted into the buckets the page rows are, plus the one preference store
+   * that is safe to reset. The counts come out of the same list the per-file rows
+   * show, so a category can never promise more than its children hold.
+   *
+   * A cached copy is stored under a hash of the reference it came from, so the
+   * original name is nowhere on the device. The one copy of that mapping is in
+   * memory: every reference an open store still holds is hashed back and matched
+   * against what the device listed. A copy nothing references any more — including
+   * one whose chat has not been opened since the app started — keeps an empty
+   * label, and the page then names it by the file it actually is on the device.
    */
-  clearLocal(ctx: common.Context): Promise<void> {
-    this.audio.stop();
-    this.media.clearCache();
-    this.chatStores.forEach((store: ChatStore): void => {
-      store.forgetDraft();
-    });
-    return ChatPreferences.clearAll(ctx);
+  async tally(ctx: common.Context): Promise<CleanupTally> {
+    const out = new CleanupTally();
+    const files = this.media.files();
+    const labels = this.cachedLabels();
+    for (const f of files) {
+      const label = labels.get(f.name);
+      f.label = label === undefined ? '' : label;
+      out.add(f.kind, f.bytes);
+    }
+    out.files = files;
+    out.choices = await ChatPreferences.choiceCount(ctx);
+    return out;
+  }
+
+  /** On-disk name of every reference an open store holds → the name the user saw. */
+  private cachedLabels(): Map<string, string> {
+    const out: Map<string, string> = new Map();
+    for (const store of this.chatStores.values()) {
+      for (const item of store.items) {
+        this.rememberLabel(out, item.videoRef, Parts.leafOf(item.videoRef));
+        this.rememberLabel(out, item.audioRef, Parts.leafOf(item.audioRef));
+        // The naming the asset panel already shows for the same object: a file by
+        // the last two segments of its path.
+        this.rememberLabel(out, item.fileRef, Parts.shortPath(item.fileName));
+      }
+    }
+    return out;
+  }
+
+  private rememberLabel(out: Map<string, string>, ref: string, label: string): void {
+    if (ref.length > 0 && label.length > 0) {
+      out.set(this.media.nameOf(ref), label);
+    }
+  }
+
+  /**
+   * Local cleanup, chosen on the cleanup page — one file at a time or a whole
+   * category, which is the same delete with more of its rows ticked. Nothing here
+   * touches the server's transcript: deleting a window is the PC's decision, and a
+   * phone tap must not erase it for every device that shares the account.
+   *
+   * Returns what actually went, which can be less than what was asked for: the
+   * system reclaims the cache on its own, and a clip a player still holds open
+   * refuses. Saying '已清理 3 项' after two went would be a lie about the third.
+   */
+  async runCleanup(ctx: common.Context, picks: CleanupPicks): Promise<number> {
+    if (picks.files.length === 0 && !picks.choices) {
+      return 0;
+    }
+    if (picks.files.length > 0) {
+      // A clip still held open by the player refuses to go, so stop it first.
+      this.audio.stop();
+    }
+    const names: string[] = [];
+    for (const f of picks.files) {
+      names.push(f.name);
+    }
+    let gone: number = this.media.dropFiles(names);
+    if (picks.choices) {
+      await ChatPreferences.clearChoices(ctx);
+      gone += 1;
+    }
+    return gone;
   }
 
   /** Sign-out: release every run and forget decoded media so no token stays live. */

@@ -22,6 +22,13 @@ export class UiKind {
 export class NoticeTone {
   static readonly ERROR: string = 'error';
   static readonly MUTED: string = 'muted';
+  /**
+   * A countdown, not a fact: it says the phone will try again in N seconds.
+   * Once the link is back — or the run turns out to be over — the sentence is
+   * false, so this tone is what the store retires. ERROR/MUTED stay forever,
+   * because "you stopped it" and "generation failed" remain true.
+   */
+  static readonly RETRYING: string = 'retrying';
 }
 
 @Observed
@@ -49,4 +56,10 @@ export class UiMessage {
   audioPlaying: boolean = false;
   fileRef: string = '';
   fileName: string = '';
+  /** Set while a document's bytes are fetched so another app can open them. */
+  fileBusy: boolean = false;
+  /** When this turn happened, as a list shows it ('10-06 21:30'); '' if unknown. */
+  stamp: string = '';
+  /** This outgoing message never reached the server; see Copy.chat_undelivered. */
+  undelivered: boolean = false;
 }

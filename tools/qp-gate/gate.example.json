@@ -1,4 +1,9 @@
 {
+  "_comment": "复制成 gate.json 只是起点：跑 `python qp_gate.py --init` 会连问带探测地把账号、口令和放行网段一次配好。已经配好了想改，用 `python qp_gate.py --edit`（等价于 start.bat config）：每一项以当前值为默认，一路回车什么都不改，而且不会重生成 token_secret。",
+  "_comment_listen_port": "对外端口 = 手机里要填的那个端口，推荐 61700，被别的程序占了才换；换过之后 --edit 会去补防火墙入站规则。",
+  "_comment_allow_cidrs": "放行网段，例如 [\"192.168.13.0/24\"]。空数组 = 不限网段，任何能路由到本机的地址都可尝试登录（口令限流仍在）。填错网段的症状是 403，守门代理的日志里会打出被拒的那个 IP。",
+  "_comment_upstream_port": "0 = 自动发现桌面端正在听的回环端口：先读 ~/.qwenpaw/config.json 的 last_api.port，再兜底扫本机回环监听表，每个候选都用 /api/auth/status 的真实形状确认。桌面端每次重启都换一个随机端口，所以钉死它只在\"你给桌面端指定过固定端口\"或\"自动发现总找不到\"时才有意义；钉死之后桌面端换了端口的症状是手机连上网关却拿不到回复，看起来像网关坏了。",
+  "_comment_username": "手机端登录名，不是桌面端账号。credential 是 PBKDF2 派生值，明文口令不落盘；token_secret 换掉即作废所有已签发令牌。",
   "listen_host": "0.0.0.0",
   "listen_port": 61700,
   "upstream_host": "127.0.0.1",
@@ -10,5 +15,5 @@
   "max_connections": 64,
   "login_max_failures": 8,
   "login_window_seconds": 60,
-  "allow_cidrs": ["192.168.1.0/24"]
+  "allow_cidrs": []
 }

@@ -43,12 +43,16 @@ export interface RunSink {
   markQueued(key: string): void;
   markUnqueued(key: string): void;
   forgetBubble(key: string): void;
+  /** The server never took this outgoing message; keep it on screen and say so. */
+  onSendUndelivered(key: string): void;
   /** Terminal response frame, or the equivalent verdict from a probe. */
   onRunFinished(status: string, errorText: string): void;
   onRateLimited(detail: string): void;
   onTransportError(detail: string): void;
   onStopFailed(detail: string): void;
   onRetrying(delaySeconds: number, detail: string): void;
+  /** Remove the "reconnecting in N seconds" lines; they describe a wait that ended. */
+  retireRetrying(): void;
   onGaveUp(): void;
   onPhase(phase: string): void;
   /** Reload bubbles; resolves true when the server still reports a live run. */
@@ -58,6 +62,8 @@ export interface RunSink {
 class QueuedSend {
   key: string = '';
   parts: RequestPart[] = [];
+  /** Identity stamped on this send's metadata; empty when nothing was attached. */
+  cid: string = '';
 }
 
 /** Bridges SseSession callbacks into the controller without a shared counter. */
@@ -95,6 +101,10 @@ export class RunController {
   private replayEnded: boolean = false;
   /** True while a run this client typed is live, false for one it only watches. */
   private localRun: boolean = false;
+  /** Any frame at all proves the server took this run's message. */
+  private accepted: boolean = true;
+  /** Bubble key of the send the current stream carries, if it is ours. */
+  private pendingKey: string = '';
   private phaseValue: string = RunPhase.IDLE;
   chatId: string = '';
   sessionId: string = '';
@@ -129,14 +139,16 @@ export class RunController {
   }
 
   /** Send now, or interrupt the live run and let this send queue behind it. */
-  submit(key: string, parts: RequestPart[]): void {
+  submit(key: string, parts: RequestPart[], cid: string = ''): void {
     if (this.phaseValue === RunPhase.IDLE) {
-      this.startRun(parts);
+      this.pendingKey = key;
+      this.startRun(parts, cid);
       return;
     }
     const item = new QueuedSend();
     item.key = key;
     item.parts = parts;
+    item.cid = cid;
     this.queue.push(item);
     this.sink.markQueued(key);
     this.requestStop();
@@ -215,8 +227,8 @@ export class RunController {
     this.setPhase(RunPhase.IDLE);
   }
 
-  private startRun(parts: RequestPart[]): void {
-    this.open(ChatApi.bodyOf(this.sessionId, parts, this.userId, this.pref), false);
+  private startRun(parts: RequestPart[], cid: string = ''): void {
+    this.open(ChatApi.bodyOf(this.sessionId, parts, this.userId, this.pref, cid), false);
   }
 
   private open(bodyJson: string, isReconnect: boolean): void {
@@ -225,6 +237,13 @@ export class RunController {
     this.terminalSeen = false;
     this.replayEnded = false;
     this.localRun = !isReconnect;
+    // A fresh send's message rides its POST, so only a frame proves the server
+    // took it. A reconnect stream carries no message and has nothing to prove.
+    this.accepted = isReconnect;
+    // Opening a stream ends the wait the notice is describing, whether the very
+    // next read succeeds or not — if it fails, scheduleReconnect writes a fresh
+    // line with the new delay.
+    this.sink.retireRetrying();
     this.setPhase(RunPhase.STREAMING);
     this.session = this.api.stream(bodyJson, new FrameHandler(this, isReconnect));
   }
@@ -245,7 +264,27 @@ export class RunController {
     });
   }
 
+  /**
+   * The user's text rides the POST, not the stream: once that POST is answered
+   * with anything other than a stream, the server never will have the message.
+   * The history rebuild that follows otherwise erases the optimistic bubble as
+   * though the send had gone out, which is how a rejected send becomes a
+   * silently lost one. The retry ladder never re-sends a POST, so this verdict
+   * is final and is reported on the first answered failure.
+   */
+  private reportUndelivered(): void {
+    if (!this.localRun || this.accepted || this.pendingKey.length === 0) {
+      return;
+    }
+    const key = this.pendingKey;
+    this.pendingKey = '';
+    this.sink.onSendUndelivered(key);
+  }
+
   handleFrame(raw: string): void {
+    // The stream is itself the answer to the POST: once any frame arrives the
+    // server has this run's message, whatever the reducer makes of it.
+    this.accepted = true;
     const facts: StreamFacts = this.reducer.feed(raw);
     if (!facts.alive) {
       return;
@@ -279,6 +318,11 @@ export class RunController {
   }
 
   handleClosed(status: number, isReconnect: boolean): void {
+    // A stream that opened at 2xx took the message even if it then dropped; only
+    // an answered refusal can say the send never got through.
+    if (status >= Http.OK_HIGH) {
+      this.reportUndelivered();
+    }
     if (this.terminalSeen) {
       this.finish();
       return;
@@ -289,14 +333,23 @@ export class RunController {
       return;
     }
     if (this.replayEnded) {
-      // Replayed a finished run whose terminal frame was not in the buffer.
-      this.resync();
+      // replay_end means "live frames follow"; a stream that then ends without a
+      // terminal is a dropped watch, not a finished run -- a finished run carries
+      // its terminal in the replayed buffer. Instant re-attach here once spun a
+      // tight loop against a server that kept claiming running, so recovery is
+      // paced through the same ladder as any other drop.
+      this.scheduleReconnect('');
       return;
     }
     this.scheduleReconnect('');
   }
 
   handleFailed(failure: Failure, isReconnect: boolean): void {
+    // httpStatus is 0 when the request never got a response; that case still has
+    // the retry ladder ahead of it, and giveUp() reports if the ladder runs out.
+    if (failure.httpStatus > 0) {
+      this.reportUndelivered();
+    }
     if (this.terminalSeen) {
       this.finish();
       return;
@@ -323,6 +376,11 @@ export class RunController {
     this.attempts += 1;
     const delaySeconds = 2 << (this.attempts - 1);
     this.setPhase(RunPhase.BACKOFF);
+    // Each rung of the ladder replaces the wait before it. Without this the screen
+    // ends up promising three pending retries at once, when only the last one is
+    // real -- and the ladder path never goes through open(), which is what
+    // normally retires these lines.
+    this.sink.retireRetrying();
     this.sink.onRetrying(delaySeconds, detail);
     this.timer = setTimeout((): void => {
       this.timer = -1;
@@ -337,6 +395,9 @@ export class RunController {
         this.attach();
         return;
       }
+      // A history load that answers at all proves the link is back, and there is
+      // no stream left to re-open here, so nothing would ever retire the countdown.
+      this.sink.retireRetrying();
       this.terminalSeen = true;
       this.finish();
     }).catch((e: Object): void => {
@@ -348,6 +409,11 @@ export class RunController {
     // busy stays true: the backend may still be generating, and probe() will
     // revive the stream or release the UI on the next tick.
     this.setPhase(RunPhase.STALE);
+    // The retry line promised an attempt that is not coming; the error below is
+    // the honest end of the story and should be the only one on screen.
+    this.sink.retireRetrying();
+    // Nothing ever answered with a stream, so this send did not go out.
+    this.reportUndelivered();
     this.sink.onGaveUp();
   }
 
@@ -365,7 +431,8 @@ export class RunController {
     const next = this.queue[0];
     this.queue.splice(0, 1);
     this.sink.markUnqueued(next.key);
-    this.startRun(next.parts);
+    this.pendingKey = next.key;
+    this.startRun(next.parts, next.cid);
   }
 
   private setPhase(phase: string): void {

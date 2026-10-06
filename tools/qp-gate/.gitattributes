@@ -1,0 +1,5 @@
+# cmd.exe is picky about batch line endings: an LF-only start.bat has been seen to
+# break mid-label. Git stores this blob as LF whenever core.autocrlf does the
+# converting, so a clone on Linux/CI (autocrlf=false) gets an LF entry point that
+# docs/04 tells people to run. Pin the checkout, not just this machine.
+*.bat text eol=crlf

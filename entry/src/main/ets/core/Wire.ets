@@ -2,6 +2,11 @@
  * Backend wire vocabulary for QwenPaw v2.2.2-beta.4.
  * These literals are the single source of truth: no other module may spell out
  * a status, object kind or content type by hand.
+ *
+ * This file mirrors the server's whole vocabulary, so a member with no consumer
+ * is not automatically dead: the ones listed below name values the server really
+ * does send or accept and the phone deliberately does not branch on. Deleting one
+ * would only make the next reader type the literal by hand.
  */
 
 /** Top-level discriminator on every console SSE frame. */
@@ -21,6 +26,7 @@ export class MsgType {
   static readonly FUNCTION_CALL_OUTPUT: string = 'function_call_output';
   static readonly MCP_TOOL_CALL: string = 'mcp_tool_call';
   static readonly MCP_TOOL_CALL_OUTPUT: string = 'mcp_tool_call_output';
+  /** Pawapp progress frames and the closing result: no bubble to draw. */
   static readonly PROGRESS: string = 'progress';
   static readonly RESULT: string = 'result';
   /** Keep-alive frame; carries no content and must stay invisible. */
@@ -48,6 +54,7 @@ export class ToolTypes {
 
 /** RunStatus shared by response/message frames. Only the last three are terminal. */
 export class RunStatus {
+  /** Non-terminal: the phone draws one running state for both and waits for a verdict. */
   static readonly CREATED: string = 'created';
   static readonly IN_PROGRESS: string = 'in_progress';
   static readonly COMPLETED: string = 'completed';
@@ -67,13 +74,34 @@ export class ContentType {
   static readonly VIDEO: string = 'video';
   static readonly DATA: string = 'data';
   static readonly FILE: string = 'file';
+  /** The server's renderer can emit one (its RefusalContent). Nothing branches on it
+   * here, so a turn that is refusal only would draw no bubble. */
   static readonly REFUSAL: string = 'refusal';
+
+  /**
+   * Which part type an upload becomes, decided by its mime prefix. One rule for
+   * the wire and for the bubble that echoes it: audio has to come back as
+   * `audio/*` or it is sent as a generic file instead of a voice note.
+   */
+  static forMime(mime: string): string {
+    if (mime.startsWith('image/')) {
+      return ContentType.IMAGE;
+    }
+    if (mime.startsWith('video/')) {
+      return ContentType.VIDEO;
+    }
+    if (mime.startsWith('audio/')) {
+      return ContentType.AUDIO;
+    }
+    return ContentType.FILE;
+  }
 }
 
 /** Frame `type` values that carry no `object` field. */
 export class FrameType {
   static readonly REPLAY_END: string = 'replay_end';
   static readonly RATE_LIMITED: string = 'rate_limited';
+  /** Token accounting the PC console shows; the desktop's own reader skips it too. */
   static readonly TURN_USAGE: string = 'turn_usage';
 }
 
@@ -113,6 +141,32 @@ export class ApiPath {
   static readonly MODELS: string = '/models';
   static readonly MODELS_ACTIVE: string = '/models/active';
   static readonly SETTINGS_UPLOAD_LIMIT: string = '/settings/upload-limit';
+  /** Skills and MCP clients, read off the same surfaces the PC console lists them on. */
+  static readonly SKILLS: string = '/skills';
+  static readonly MCP: string = '/mcp';
+  static readonly MCP_TOOLS: string = '/mcp/tools';
+}
+
+/**
+ * The channel every message from this app is sent on, and the wildcard a skill
+ * or command uses to say 'every channel'. A skill whose declared channels cover
+ * neither is installed but unreachable from a phone.
+ */
+export class Channel {
+  static readonly CONSOLE: string = 'console';
+  static readonly ALL: string = 'all';
+
+  static reachable(channels: string[]): boolean {
+    if (channels.length === 0) {
+      return true;
+    }
+    for (const c of channels) {
+      if (c === Channel.ALL || c === Channel.CONSOLE) {
+        return true;
+      }
+    }
+    return false;
+  }
 }
 
 export class Http {
@@ -145,6 +199,8 @@ export class Severity {
 /** Least privilege: approving records the literal target only. */
 export class ApprovalScope {
   static readonly EXACT: string = 'exact';
+  /** The server accepts it, meaning "remember the generalized pattern". Never sent:
+   * one tap on a phone should not widen what was approved. */
   static readonly SIMILAR: string = 'similar';
 }
 

@@ -35,21 +35,44 @@ Provider 凭据在 `~/.qwenpaw.secret`，本工程不读它、也不该读它。
 
 ```bat
 tools\qp-gate\start.bat                 :: 启动；gate.json 不存在时先引导设账号口令
-tools\qp-gate\start.bat password        :: 换手机端登录的用户名与口令
+tools\qp-gate\start.bat config          :: 改配置：账号口令（可跳过）、两个端口、放行网段
+tools\qp-gate\start.bat password        :: 只换手机端登录的用户名与口令
+tools\qp-gate\start.bat show            :: 打印当前生效配置，连每一项的含义一起打
 tools\qp-gate\start.bat discover        :: 只看探测到的上游端口
-tools\qp-gate\start.bat check           :: 40 项自检，自带桩上游，不碰真实配置
+tools\qp-gate\start.bat check           :: 70 项自检，自带桩上游，不碰真实配置
+tools\qp-gate\start.bat firewall        :: 单独补一次入站放行（弹 UAC）
+tools\qp-gate\start.bat firewall-remove :: 删掉本工具加的防火墙规则（网关停了它还在）
 tools\qp-gate\start.bat help            :: 列出全部命令
 ```
 
 ```bat
-python tools\qp-gate\qp_gate.py --init    :: 设手机端登录用的账号口令 + 放行防火墙
+python tools\qp-gate\qp_gate.py --init    :: 首启：设账号口令 + 放行防火墙
+python tools\qp-gate\qp_gate.py --edit    :: 日常改配置（= start.bat config）
 python tools\qp-gate\qp_gate.py           :: 启动
-python tools\qp-gate\selftest.py          :: 40 项自检，自带桩上游，不碰真实配置
+python tools\qp-gate\selftest.py          :: 70 项自检，自带桩上游，不碰真实配置
 ```
 
-**换口令用 `start.bat password`，别用 `--init --force`**：后者会重新生成 `token_secret`，
-把手机端已签发的令牌全部作废；而且口令只能交互输入，不会进命令行、也就不会留在
-进程列表和 shell 历史里。
+日常改东西只碰 `start.bat config`：每一项都把当前值当默认，一路回车等于什么都没改，
+完事立刻把生效值打回来。**更高级的字段（令牌有效期、连接上限、限流窗口、监听地址）
+手改 `gate.json`，改完 `start.bat show` 复核。**
+
+**防火墙那条入站规则是永久的**：`--init` / `config` 换端口时加的规则（`name=qp-gate`，
+只放行那**一个**端口）不随网关停止、不随重启消失——**关掉网关窗口（Ctrl+C）也不会删它**。
+不想再让局域网进这台机器时，明确地删掉它：
+
+```bat
+tools\qp-gate\start.bat firewall-remove
+```
+
+它按规则名删，而这个名字只有本工具在用，所以一次会带走**这个名下所有端口**的规则
+（换过端口的话，旧端口那条也一起没了）——想留着现在这个口只清历史遗留，就别用它，
+在管理员命令行里按端口删：`netsh advfirewall firewall delete rule name=qp-gate protocol=tcp localport=<旧端口>`。
+加与删都会**回头看规则状态**再报成败（拉起提权进程返回 0 不等于放行成功）。
+
+`--edit` 与 `--init` 有一条要紧的区别：**改端口配置不会作废已签发的令牌**，而 `--init --force`
+会重新生成 `token_secret`，把手机端全部踢下线重来。所以换口令用 `start.bat password`、
+改配置用 `start.bat config`，**别拿 `--init --force` 当"改配置"用**。这两个入口的口令都只在
+交互提示里输入，不会进命令行、也就不会留在进程列表和 shell 历史里。
 
 手机端登录页把扫描端口填 `61700`，扫出来的那台机器就是它，账号口令填 `--init` 里设的。
 
@@ -79,7 +102,7 @@ python tools\qp-gate\selftest.py          :: 40 项自检，自带桩上游，�
 
 - 桌面端发起的新一轮，手机**不需要退出重进**就能看到对端消息。链路是
   10 秒一次的统一轮询（`polling/GlobalPoller.ets`）+ 进入会话时的追帧
-  （`state/ChatStore.ets:347 catchUpTurn`）。
+  （`state/ChatStore.ets:408 catchUpTurn`）。
 - 手机上点发送后如果对方正在跑，本端会 attach 到在途的 run 并回放缓冲帧
   （请求体里 `reconnect: true`，见 [07](07-server-contract.md)）。
 - 断线重连按 2/4/8 秒退避，最多 3 次（`stream/RunController.ets:26,324`）。

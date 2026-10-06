@@ -15,12 +15,14 @@ import { ApprovalApi } from '../api/ApprovalApi';
 import { ChatApi } from '../api/ChatApi';
 import { UploadApi } from '../api/UploadApi';
 import { Failure } from '../core/Failure';
+import { nowStamp, stampText } from '../core/Format';
 import { ChatPreferences } from '../core/Prefs';
-import { ChatStatus, MsgType, Role, RunStatus, ToolTypes } from '../core/Wire';
+import { ChatStatus, ContentType, MsgType, Role, RunStatus, ToolTypes } from '../core/Wire';
 import { MediaLoader, MediaValue } from '../media/MediaLoader';
 import { AudioPlayer } from '../media/AudioPlayer';
+import { Export } from '../media/Export';
 import { Attachment } from '../model/Attachment';
-import { ChatPreference } from '../model/ChatPrefs';
+import { ChatPreference, SentMedia } from '../model/ChatPrefs';
 import {
   ApprovalInfo,
   ChatHistory,
@@ -28,7 +30,6 @@ import {
   ChatRef,
   ChatSpec,
   LoopModeInfo,
-  RequestPart,
   UploadResult
 } from '../model/Dtos';
 import { LoopModes } from '../model/LoopModes';
@@ -50,6 +51,13 @@ function partTemplates(): PartTemplates {
   t.outputSuffix = Copy.chat_tool_output_suffix;
   return t;
 }
+
+/**
+ * Sends one chat keeps a media echo for, newest last. It is a display aid for the
+ * turns this phone sent, and the ones a user still scrolls to are the recent ones;
+ * an older turn simply comes back the way it does on the desktop.
+ */
+const MAX_SENT_MEDIA: number = 20;
 
 export class ChatStore implements RunSink, PollTarget {
   readonly ref: ChatRef;
@@ -215,14 +223,6 @@ export class ChatStore implements RunSink, PollTarget {
     await ChatPreferences.set(ctx, pref);
   }
 
-  /**
-   * Local cleanup dropped this window's stored draft, so the live copy goes too:
-   * a store that kept one would write it back on the composer's next keystroke.
-   */
-  forgetDraft(): void {
-    this.controller.pref.draft = '';
-  }
-
   async bootstrap(): Promise<void> {
     this.loading = true;
     this.emit();
@@ -242,7 +242,8 @@ export class ChatStore implements RunSink, PollTarget {
   }
 
   /** Send now, or interrupt the live run and queue this message behind it. */
-  async send(text: string, attachments: Attachment[]): Promise<void> {
+  async send(ctx: common.Context | undefined, text: string,
+    attachments: Attachment[]): Promise<void> {
     const trimmed = text.trim();
     if (trimmed.length === 0 && attachments.length === 0) {
       return;
@@ -268,8 +269,15 @@ export class ChatStore implements RunSink, PollTarget {
     const wire = LoopModes.apply(trimmed, this.loopModes, this.controller.pref.loopSlash,
       !this.controller.busy());
     const parts = ChatApi.buildParts(wire, uploads, mimes);
-    const bubble = this.addUserBubble(wire, uploads);
-    this.controller.submit(bubble.key, parts);
+    const bubble = this.addUserBubble(wire, uploads, mimes);
+    // Recorded before the run opens: the point of the echo is that the media is
+    // still here after a reload, and a reload can happen the moment the turn ends.
+    // No context means no record, which costs a thumbnail and never the send.
+    let cid: string = '';
+    if (uploads.length > 0 && ctx !== undefined) {
+      cid = await this.rememberSentMedia(ctx, bubble);
+    }
+    this.controller.submit(bubble.key, parts, cid);
     this.emit();
   }
 
@@ -319,6 +327,36 @@ export class ChatStore implements RunSink, PollTarget {
     const index = this.indexOf(key);
     if (index >= 0) {
       this.items[index].audioPlaying = false;
+      this.emit();
+    }
+  }
+
+  /**
+   * Open a document in an app on the phone. Its bytes live on the PC, so they are
+   * fetched into the media cache first — the same copy the asset panel would save —
+   * and only then handed to whichever reader the system matches. A second tap while
+   * the first is still fetching does nothing: two copies of one file, opened twice,
+   * reads as the app being slow rather than as a busy flag nobody honoured.
+   */
+  async openFile(ctx: common.Context, m: UiMessage): Promise<void> {
+    if (m.fileRef.length === 0 || m.fileBusy) {
+      return;
+    }
+    m.fileBusy = true;
+    this.emit();
+    try {
+      const name = m.fileName.length > 0 ? m.fileName : m.fileRef;
+      const path = await this.media.localPath(m.fileRef);
+      if (path.length === 0) {
+        this.pushNotice(Copy.fill(Copy.assets_fetch_failed, Parts.leafOf(name)), NoticeTone.ERROR);
+        return;
+      }
+      const detail = await Export.open(ctx as common.UIAbilityContext, path, name);
+      if (detail.length > 0) {
+        this.pushNotice(detail, NoticeTone.ERROR);
+      }
+    } finally {
+      m.fileBusy = false;
       this.emit();
     }
   }
@@ -379,7 +417,8 @@ export class ChatStore implements RunSink, PollTarget {
     for (const c of snapshot.chats) {
       if (c.id === this.ref.chatId) {
         running = c.status === ChatStatus.RUNNING;
-        finishedAt = c.last_finished_at;
+        // The desktop sends null until this chat's first run ever finishes.
+        finishedAt = c.last_finished_at === null ? '' : c.last_finished_at;
       } else if (c.status === ChatStatus.RUNNING) {
         bg.push(c);
       }
@@ -436,6 +475,9 @@ export class ChatStore implements RunSink, PollTarget {
       created.audioRef = u.audioUrl;
       created.fileRef = u.fileUrl;
       created.fileName = u.fileName;
+      // A live turn has no server instant yet — the stream carries none — so the
+      // phone stamps its own. The reload that follows replaces it with the server's.
+      created.stamp = nowStamp();
       this.push(created);
       this.requestImage(created);
       this.requestVideo(created);
@@ -499,6 +541,23 @@ export class ChatStore implements RunSink, PollTarget {
     }
   }
 
+  /**
+   * Marks the bubble as one the server refused to take, which also makes it
+   * survive the history rebuild that follows: an ordinary optimistic bubble is
+   * dropped there because a rebuild assumes every message it removed went out.
+   * Without this the user's text disappears with no trace of the rejected send.
+   */
+  onSendUndelivered(key: string): void {
+    const index = this.indexOf(key);
+    if (index < 0) {
+      return;
+    }
+    const m = this.items[index];
+    m.undelivered = true;
+    m.streaming = false;
+    this.pushNotice(Copy.notice_undelivered, NoticeTone.ERROR);
+  }
+
   onRunFinished(status: string, errorText: string): void {
     this.finishStreaming();
     if (status === RunStatus.FAILED) {
@@ -526,7 +585,30 @@ export class ChatStore implements RunSink, PollTarget {
     const text = detail.length > 0
       ? Copy.fillN2(Copy.notice_interrupted_with, detail, delaySeconds)
       : Copy.fillN(Copy.notice_interrupted, delaySeconds);
-    this.pushNotice(text, NoticeTone.MUTED);
+    this.pushNotice(text, NoticeTone.RETRYING);
+  }
+
+  /**
+   * Drop the pending-reconnect lines. The controller calls this whenever the wait
+   * they describe stops being the current one — the link is demonstrated to work
+   * again, the wait ends for good, or the ladder moves to its next rung — because
+   * nothing else makes them stop being true, and history reloads keep every notice
+   * on purpose. Left alone, a screen the connection has long since recovered shows
+   * "reconnecting in 2 seconds" forever, and each retry attempt adds another.
+   */
+  retireRetrying(): void {
+    const kept: UiMessage[] = [];
+    for (const m of this.items) {
+      if (m.kind === UiKind.NOTICE && m.tone === NoticeTone.RETRYING) {
+        continue;
+      }
+      kept.push(m);
+    }
+    if (kept.length === this.items.length) {
+      return;
+    }
+    this.items = kept;
+    this.emit();
   }
 
   onGaveUp(): void {
@@ -559,8 +641,10 @@ export class ChatStore implements RunSink, PollTarget {
     for (const m of this.items) {
       // Notices are the phone's own commentary and never come back from history,
       // so a rebuild that dropped them would silently erase "stopped" / "failed"
-      // lines the user had just been told about.
-      if (m.kind === UiKind.QUEUED || m.kind === UiKind.NOTICE) {
+      // lines the user had just been told about. An undelivered send is kept for
+      // the same reason: the server has no copy of it, so history cannot bring it
+      // back either.
+      if (m.kind === UiKind.QUEUED || m.kind === UiKind.NOTICE || m.undelivered) {
         rebuilt.push(m);
       }
     }
@@ -576,6 +660,11 @@ export class ChatStore implements RunSink, PollTarget {
     const m = new UiMessage();
     m.key = src.id;
     m.role = src.role === Role.USER ? Role.USER : Role.ASSISTANT;
+    // The reply's landing time beats the turn's creation time: a turn with long
+    // tool calls is created long before it answers, and the asset list reads as
+    // "this arrived now". Legacy rows carry no finished_at.
+    const meta = src.metadata;
+    m.stamp = stampText(Parts.str(meta?.finished_at ?? meta?.timestamp));
     const type = src.type;
     if (ToolTypes.isTool(type)) {
       const data = Parts.firstData(src.content);
@@ -601,6 +690,9 @@ export class ChatStore implements RunSink, PollTarget {
         m.fileName = file.name;
       }
     }
+    if (m.role === Role.USER) {
+      this.applySentMedia(src, m);
+    }
     if (m.text.length === 0 && m.imageRef.length === 0
       && m.videoRef.length === 0 && m.audioRef.length === 0
       && m.fileRef.length === 0 && m.fileName.length === 0) {
@@ -609,39 +701,105 @@ export class ChatStore implements RunSink, PollTarget {
     return m;
   }
 
-  private addUserBubble(text: string, uploads: UploadResult[]): UiMessage {
+  /**
+   * The echo shown the instant the message leaves, before the server answers.
+   *
+   * It is built from the same labelling, the same mime list and the same refs as
+   * toUi(), which is what replaces it once history comes back: an echo that named a
+   * take 'voice-1791121878906.m4a' would watch its own attachment turn into '[语音]'
+   * a few seconds later, and a name that only ever existed on this phone is not
+   * something the transcript can agree with. The mimes are read the way
+   * ChatApi.buildParts reads them, because the type that server part got is the
+   * type this bubble has to show — the stored name is the server's to choose.
+   */
+  private addUserBubble(text: string, uploads: UploadResult[], mimes: string[]): UiMessage {
     const m = new UiMessage();
     m.key = `local_${Date.now()}_${this.noticeSeq}`;
     this.noticeSeq += 1;
     m.role = Role.USER;
     m.kind = UiKind.TEXT;
-    if (text.length > 0) {
-      m.text = text;
-    }
-    // A video or voice note leaves no visible trace of its own, so the bubble has
-    // to name it even when the message also carries text.
-    if (uploads.length > 0) {
-      const names: string[] = uploads.map((u: UploadResult): string =>
-        Copy.fill(Copy.chat_attachment_line, u.file_name));
-      const line = names.join('\n');
-      m.text = m.text.length > 0 ? `${m.text}\n${line}` : line;
-    }
-    for (const up of uploads) {
-      const mime = UploadApi.mimeFromName(up.file_name);
-      // The sent clip is addressable by its stored path, so the phone previews and
-      // replays it exactly the way it plays one received from the PC.
-      if (m.imageRef.length === 0 && mime.startsWith('image/')) {
+    m.stamp = nowStamp();
+    let labels = '';
+    for (let i = 0; i < uploads.length; i++) {
+      const up = uploads[i];
+      const type = ContentType.forMime(i < mimes.length ? mimes[i] : '');
+      labels += Parts.label(type, up.file_name, this.templates);
+      if (type === ContentType.IMAGE && m.imageRef.length === 0) {
         m.imageRef = up.url;
-      } else if (m.videoRef.length === 0 && mime.startsWith('video/')) {
+      } else if (type === ContentType.VIDEO && m.videoRef.length === 0) {
         m.videoRef = up.url;
-      } else if (m.audioRef.length === 0 && mime.startsWith('audio/')) {
+      } else if (type === ContentType.AUDIO && m.audioRef.length === 0) {
         m.audioRef = up.url;
+      } else if (type === ContentType.FILE && m.fileRef.length === 0) {
+        // The sent clip is addressable by its stored path, so the phone previews
+        // and replays it exactly the way it plays one received from the PC.
+        m.fileRef = up.url;
+        m.fileName = up.file_name;
       }
     }
+    m.text = `${text}${labels}`;
     this.push(m);
     this.requestImage(m);
     this.requestVideo(m);
     return m;
+  }
+
+  /**
+   * Keep what this phone just showed for an outgoing turn, so its own media can be
+   * put back after a history reload.
+   *
+   * The server stores a turn's attachments for history only when that turn carried
+   * a `file` part, so an uploaded image comes back as the model-facing sentence the
+   * desktop built — on the desktop's own client too (docs/07 §8.1). The id written
+   * into the message metadata is what ties a history row back to this record: the
+   * history `id` is re-minted per request, so nothing else on the wire identifies
+   * a turn this phone sent. Once the desktop starts echoing attachments the record
+   * simply stops matching, and the phone shows the server's answer.
+   *
+   * Resolves to the id to stamp on the request.
+   */
+  private async rememberSentMedia(ctx: common.Context, bubble: UiMessage): Promise<string> {
+    const rec = new SentMedia();
+    rec.cid = `cm_${Date.now()}_${this.noticeSeq}`;
+    rec.imageRef = bubble.imageRef;
+    rec.videoRef = bubble.videoRef;
+    rec.audioRef = bubble.audioRef;
+    rec.fileRef = bubble.fileRef;
+    rec.fileName = bubble.fileName;
+    const pref = this.controller.pref;
+    const kept = pref.sentMedia.concat([rec]);
+    pref.sentMedia = kept.length > MAX_SENT_MEDIA
+      ? kept.slice(kept.length - MAX_SENT_MEDIA) : kept;
+    await ChatPreferences.set(ctx, pref);
+    return rec.cid;
+  }
+
+  /**
+   * Paste the phone's own attachments back into a history row that arrived without
+   * any. Only a row that carries this phone's id and has nothing of its own to show
+   * qualifies, so a turn the server did render is never overwritten and a message
+   * sent from the PC is never claimed.
+   */
+  private applySentMedia(src: ChatMessageModel, m: UiMessage): void {
+    const cid = src.metadata?.metadata?.qwenpaw_client_message_id ?? '';
+    if (cid.length === 0) {
+      return;
+    }
+    if (m.imageRef.length > 0 || m.videoRef.length > 0 || m.audioRef.length > 0
+      || m.fileRef.length > 0 || m.fileName.length > 0) {
+      return;
+    }
+    for (const rec of this.controller.pref.sentMedia) {
+      if (rec.cid !== cid) {
+        continue;
+      }
+      m.imageRef = rec.imageRef;
+      m.videoRef = rec.videoRef;
+      m.audioRef = rec.audioRef;
+      m.fileRef = rec.fileRef;
+      m.fileName = rec.fileName;
+      return;
+    }
   }
 
   /** Header-authenticated byte fetch -> PixelMap; never a token in a URL. */

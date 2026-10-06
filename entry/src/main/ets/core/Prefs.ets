@@ -6,7 +6,7 @@
 import { preferences } from '@kit.ArkData';
 import { common } from '@kit.AbilityKit';
 import { ChatRef } from '../model/Dtos';
-import { ChatPreference } from '../model/ChatPrefs';
+import { ChatPreference, SentMedia } from '../model/ChatPrefs';
 import { ApprovalLevel } from './Wire';
 
 const STORE_NAME: string = 'qwenpaw_store';
@@ -26,7 +26,7 @@ class Key {
   static readonly CONFIG_USER: string = 'config_username';
   static readonly PASSWORD: string = 'auth_password';
   static readonly SCAN_PORT: string = 'scan_port';
-  /** Composer choices per chat: approval level, model slot, loop mode. */
+  /** Composer state per chat: approval level, model slot, loop mode, sent media. */
   static readonly CHAT_PREFS: string = 'chat_prefs';
   /** Home view switch: show only the main window. Device-level, like the theme. */
   static readonly HOME_COMPACT: string = 'home_compact';
@@ -205,6 +205,12 @@ export class Settings {
     await Prefs.write(ctx, Key.CONFIG_USER, value);
   }
 
+  /**
+   * The typed login, kept in clear text so a return to the PC does not mean
+   * retyping. Signing out leaves it behind on purpose — 'log out' is not 'forget
+   * my password' — and the login configuration page is where it goes: empty the
+   * two fields, save, and this writes empty over both.
+   */
   static async savePassword(ctx: common.Context, value: string): Promise<void> {
     await Prefs.write(ctx, Key.PASSWORD, value);
   }
@@ -302,11 +308,60 @@ export class ChatPreferences {
     return count;
   }
 
-  /** Drop this server's stored choices and drafts. The transcript is not here. */
-  static async clearAll(ctx: common.Context): Promise<void> {
-    await eraseScoped(ctx, Key.CHAT_PREFS);
-    // readScoped promotes a pre-scoping entry once; the legacy key goes too.
-    await Prefs.erase(ctx, Key.CHAT_PREFS);
+  /**
+   * Chats this phone remembers something about: a composer choice of its own, or
+   * media it sent. Both are what the cleanup page's 会话偏好 row clears, so both
+   * have to be counted or the row offers a sweep that misses half of it.
+   */
+  static async choiceCount(ctx: common.Context): Promise<number> {
+    let count: number = 0;
+    for (const pref of await ChatPreferences.read(ctx)) {
+      if (ChatPreferences.hasChoice(pref) || pref.sentMedia.length > 0) {
+        count += 1;
+      }
+    }
+    return count;
+  }
+
+  private static hasChoice(pref: ChatPreference): boolean {
+    return pref.approvalLevel.length > 0 || pref.providerId.length > 0
+      || pref.model.length > 0 || pref.loopModeId.length > 0;
+  }
+
+  private static isEmpty(pref: ChatPreference): boolean {
+    return pref.draft.length === 0 && !ChatPreferences.hasChoice(pref);
+  }
+
+  /**
+   * Everything the cleanup page's 会话偏好 row covers: composer choices and the
+   * record of media this phone sent. A draft the user is halfway through survives,
+   * because that row is not about the composer.
+   */
+  static async clearChoices(ctx: common.Context): Promise<void> {
+    const kept: ChatPreference[] = [];
+    for (const pref of await ChatPreferences.read(ctx)) {
+      if (ChatPreferences.hasChoice(pref)) {
+        pref.approvalLevel = '';
+        pref.providerId = '';
+        pref.model = '';
+        pref.loopModeId = '';
+        pref.loopSlash = '';
+      }
+      pref.sentMedia = [];
+      if (!ChatPreferences.isEmpty(pref)) {
+        kept.push(pref);
+      }
+    }
+    await ChatPreferences.rewrite(ctx, kept);
+  }
+
+  private static async rewrite(ctx: common.Context, prefs: ChatPreference[]): Promise<void> {
+    if (prefs.length === 0) {
+      await eraseScoped(ctx, Key.CHAT_PREFS);
+      await Prefs.erase(ctx, Key.CHAT_PREFS);
+      return;
+    }
+    await writeScoped(ctx, Key.CHAT_PREFS, JSON.stringify(prefs));
   }
 
   private static async read(ctx: common.Context): Promise<ChatPreference[]> {
@@ -344,8 +399,39 @@ export class ChatPreferences {
     pref.loopModeId = text(stored.loopModeId);
     pref.loopSlash = text(stored.loopSlash);
     pref.draft = text(stored.draft);
+    pref.sentMedia = ChatPreferences.normaliseSentMedia(stored.sentMedia);
     const level = text(stored.approvalLevel);
     pref.approvalLevel = level.length > 0 && ApprovalLevel.isKnown(level) ? level.toUpperCase() : '';
     return pref;
+  }
+
+  /**
+   * Stored records are re-typed field by field like the rest of the table, and a
+   * record whose id or references are gone cannot restore anything, so it is
+   * dropped rather than kept as a row the cleanup page would still count.
+   *
+   * Absent means 'written before this existed', which is normal: the table has
+   * been on device since the draft feature.
+   */
+  private static normaliseSentMedia(stored: SentMedia[] | undefined): SentMedia[] {
+    const out: SentMedia[] = [];
+    if (stored === undefined) {
+      return out;
+    }
+    for (const rec of stored) {
+      const kept = new SentMedia();
+      kept.cid = text(rec.cid);
+      kept.imageRef = text(rec.imageRef);
+      kept.videoRef = text(rec.videoRef);
+      kept.audioRef = text(rec.audioRef);
+      kept.fileRef = text(rec.fileRef);
+      kept.fileName = text(rec.fileName);
+      const hasRef = kept.imageRef.length > 0 || kept.videoRef.length > 0
+        || kept.audioRef.length > 0 || kept.fileRef.length > 0 || kept.fileName.length > 0;
+      if (kept.cid.length > 0 && hasRef) {
+        out.push(kept);
+      }
+    }
+    return out;
   }
 }

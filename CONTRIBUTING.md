@@ -67,6 +67,8 @@ git status --short
 - [ ] `devecocli check lint` 干净
 - [ ] `devecocli build` 成功（无证书也应成功，产物 unsigned）
 - [ ] 改了 `qp_gate.py` → `python tools/qp-gate/selftest.py` 全过
+- [ ] `python tools/doc_line_check.py` 0 problems（它管三件事：文档里的代码行引用、markdown
+      相对链接、`Copy.fill*` 的占位符数量。后两样 ArkTS 与 lint 都不报，只在屏幕上说谎）
 - [ ] 影响 UI → 至少一个真机/模拟器形态的实测说明（截图不入库，写在描述里）
 - [ ] 影响服务端交互 → 说明是否连真实端验过
 - [ ] 涉及审批/鉴权/绑定地址 → 先开 issue 讨论，别直接提交

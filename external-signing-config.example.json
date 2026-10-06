@@ -1,0 +1,20 @@
+{
+  "_comment_purpose": "This is a SHAPE sample, not a working config. hvigorfile.ts only ever reads 'external-signing-config.json' (same directory, git-ignored), so leaving this file next to it changes nothing about the build.",
+  "_comment_how_to_get_real_values": "Run 'devecocli signature generate' (or tick 'Automatically generate signing' in DevEco Studio). It writes the real block into build-profile.json5. Copy that whole signingConfigs array into a file named external-signing-config.json, then restore the empty placeholders in build-profile.json5 and commit that. Do not hand-write these paths: the passwords are encrypted with a key that exists only on the machine that generated them.",
+  "_comment_never_commit": "The real file carries keystore paths and passwords. /external-signing-config.json is in .gitignore for that reason - keep it there, and do not put it in a shared or cloud-synced folder.",
+  "signingConfigs": [
+    {
+      "name": "default",
+      "type": "HarmonyOS",
+      "material": {
+        "certpath": "C:/<your home>/.ohos/config/default_<project>_<hash>.cer",
+        "keyAlias": "<what the generator used>",
+        "keyPassword": "<from the generated build-profile.json5>",
+        "profile": "C:/<your home>/.ohos/config/default_<project>_<hash>.p7b",
+        "signAlg": "SHA256withECDSA",
+        "storeFile": "C:/<your home>/.ohos/config/default_<project>_<hash>.p12",
+        "storePassword": "<from the generated build-profile.json5>"
+      }
+    }
+  ]
+}

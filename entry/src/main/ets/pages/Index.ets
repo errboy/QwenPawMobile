@@ -147,7 +147,7 @@ struct Index {
     if (failure.kind === FailureKind.Locked) {
       return Copy.account_locked;
     }
-    return failure.message;
+    return Copy.fill(Copy.login_failed, failure.message);
   }
 
   private async goHome(): Promise<void> {

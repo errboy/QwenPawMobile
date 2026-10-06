@@ -8,6 +8,8 @@
  */
 import { ApprovalApi } from '../api/ApprovalApi';
 import { ChatApi } from '../api/ChatApi';
+import { Failure } from '../core/Failure';
+import { Log } from '../core/Log';
 import { ApprovalInfo, ChatSpec } from '../model/Dtos';
 
 export const POLL_INTERVAL_MS: number = 10000;
@@ -90,6 +92,10 @@ export class GlobalPoller {
       next.approvals = await this.approvalApi.list();
       next.failures = 0;
     } catch (e) {
+      // The hint the user gets is a generic "cannot reach the server". A server
+      // that answers 200 with something that is not a list is the opposite case,
+      // and this line is the only place that tells them apart.
+      Log.warn(`轮询失败：${Failure.from(e).message}`);
       // Keep the last good snapshot: a transient blip must not blank the list.
       next.chats = this.snapshotValue.chats;
       next.approvals = this.snapshotValue.approvals;

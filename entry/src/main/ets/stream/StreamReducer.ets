@@ -15,7 +15,7 @@
  */
 import { ContentPart, FrameError } from '../model/Content';
 import { SseFrame } from '../model/Dtos';
-import { DEFAULT_TEMPLATES, Parts, PartTemplates } from '../model/Parts';
+import { Parts, PartTemplates } from '../model/Parts';
 import { ContentType, FrameType, MsgType, RunStatus, SseObject, ToolTypes } from '../core/Wire';
 
 /** Bubble families the chat UI renders. */
@@ -71,8 +71,8 @@ export class StreamReducer {
   private readonly templates: PartTemplates;
   private readonly bufs: Map<string, MsgBuf> = new Map();
 
-  constructor(templates?: PartTemplates) {
-    this.templates = templates === undefined ? DEFAULT_TEMPLATES : templates;
+  constructor(templates: PartTemplates) {
+    this.templates = templates;
   }
 
   /** Feed the raw payload of one `data:` line. Malformed JSON is dropped, not fatal. */
@@ -129,7 +129,7 @@ export class StreamReducer {
     }
     if (type === ContentType.IMAGE) {
       const url = Parts.str(f.image_url);
-      if (url.length === 0) {
+      if (url.length === 0 || !Parts.reachable(url)) {
         return;
       }
       const buf = this.bufferFor(msgId);
@@ -139,7 +139,7 @@ export class StreamReducer {
     }
     if (type === ContentType.VIDEO) {
       const url = Parts.str(f.video_url);
-      if (url.length === 0) {
+      if (url.length === 0 || !Parts.reachable(url)) {
         return;
       }
       const buf = this.bufferFor(msgId);
@@ -152,7 +152,7 @@ export class StreamReducer {
       if (url.length === 0 && typeof f.data === 'string') {
         url = Parts.str(f.data as string);
       }
-      if (url.length === 0) {
+      if (url.length === 0 || !Parts.reachable(url)) {
         return;
       }
       const buf = this.bufferFor(msgId);
@@ -167,7 +167,7 @@ export class StreamReducer {
         return;
       }
       const buf = this.bufferFor(msgId);
-      buf.fileUrl = url;
+      buf.fileUrl = Parts.reachable(url) ? url : '';
       buf.fileName = name;
       out.upserts.push(this.snapshot(msgId, buf, true));
       return;

@@ -6,9 +6,11 @@
 import { ApiClient } from '../net/ApiClient';
 import { SseHandler, SseSession } from '../net/SseSession';
 import { Failure } from '../core/Failure';
-import { AgentRequest, ChatHistory, ChatSpec, NewChatRequest, OutgoingMessage, RequestPart, UploadResult } from '../model/Dtos';
+import { AgentRequest, ChatHistory, ChatSpec, NewChatRequest, OutgoingMessage, OutgoingMeta, RequestPart, UploadResult } from '../model/Dtos';
 import { ChatPreference } from '../model/ChatPrefs';
 import { ApiPath, ContentType } from '../core/Wire';
+import { Copy } from '../l10n/Copy';
+import { expectList } from './Shape';
 
 export class ChatApi {
   private readonly client: ApiClient;
@@ -20,8 +22,7 @@ export class ChatApi {
   /** GET /api/chats — the same window list the PC console shows. */
   async list(): Promise<ChatSpec[]> {
     const raw = await this.client.get(ApiPath.CHATS);
-    const parsed = JSON.parse(raw) as ChatSpec[];
-    return parsed === undefined ? [] : parsed;
+    return expectList<ChatSpec>(JSON.parse(raw), ApiPath.CHATS);
   }
 
   /**
@@ -36,7 +37,7 @@ export class ChatApi {
     const raw = await this.client.post(ApiPath.CHATS, JSON.stringify(body));
     const parsed = JSON.parse(raw) as ChatSpec;
     if (parsed === undefined || parsed.id === undefined || parsed.id.length === 0) {
-      throw Failure.parse('新建会话响应缺少 id');
+      throw Failure.parse(Copy.notice_chat_no_id);
     }
     return parsed;
   }
@@ -45,7 +46,7 @@ export class ChatApi {
     const raw = await this.client.get(`${ApiPath.CHATS}/${encodeURIComponent(chatId)}`);
     const parsed = JSON.parse(raw) as ChatHistory;
     if (parsed === undefined) {
-      throw Failure.parse('历史记录响应为空');
+      throw Failure.parse(Copy.notice_history_empty);
     }
     if (parsed.messages === undefined) {
       parsed.messages = [];
@@ -78,17 +79,15 @@ export class ChatApi {
       const upload = uploads[i];
       const mime = i < mimes.length ? mimes[i] : '';
       const part = new RequestPart();
-      if (mime.startsWith('image/')) {
-        part.type = ContentType.IMAGE;
+      const type = ContentType.forMime(mime);
+      part.type = type;
+      if (type === ContentType.IMAGE) {
         part.image_url = upload.url;
-      } else if (mime.startsWith('video/')) {
-        part.type = ContentType.VIDEO;
+      } else if (type === ContentType.VIDEO) {
         part.video_url = upload.url;
-      } else if (mime.startsWith('audio/')) {
-        part.type = ContentType.AUDIO;
+      } else if (type === ContentType.AUDIO) {
         part.data = upload.url;
       } else {
-        part.type = ContentType.FILE;
         part.file_url = upload.url;
         part.file_name = upload.file_name;
       }
@@ -99,14 +98,23 @@ export class ChatApi {
 
   /**
    * `pref` rides along as pass-through body fields: leaving both unset is what
-   * "follow the desktop's own default" looks like on the wire, because the server
-   * only reads them when they are present.
+   * "follow the desktop's own default" means on the wire, because the server only
+   * reads them when they are present.
+   *
+   * `cid` is stamped on the message metadata, which the server stores for a user
+   * turn and echoes back in history. It is sent only for a turn that carried an
+   * attachment, so a plain message stays byte-for-byte what it was.
    */
   static bodyOf(sessionId: string, parts: RequestPart[], userId: string | undefined,
-    pref?: ChatPreference): string {
+    pref?: ChatPreference, cid?: string): string {
     const message = new OutgoingMessage();
     message.role = 'user';
     message.content = parts;
+    if (cid !== undefined && cid.length > 0) {
+      const meta = new OutgoingMeta();
+      meta.qwenpaw_client_message_id = cid;
+      message.metadata = meta;
+    }
     const body = new AgentRequest();
     body.input = [message];
     body.session_id = sessionId;

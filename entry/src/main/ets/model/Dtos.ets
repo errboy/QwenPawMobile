@@ -48,8 +48,12 @@ export class ChatSpec {
   channel: string = 'console';
   created_at: string = '';
   updated_at: string = '';
-  /** Stamped when a run finishes; how a client notices a turn it never watched. */
-  last_finished_at: string = '';
+  /**
+   * Stamped when a run finishes; how a client notices a turn it never watched.
+   * The desktop declares it Optional and sends null until the chat's first run
+   * ever completes, so readers fold null to ''.
+   */
+  last_finished_at: string | null = null;
   /** Live value: the server overwrites it from the task tracker (idle|running). */
   status: string = 'idle';
   pinned: boolean = false;
@@ -80,6 +84,8 @@ export class ChatMessageModel {
   role: string = '';
   content: ContentPart[] = [];
   status: string = '';
+  /** Server envelope; only the echoed client metadata is read (see MessageMeta). */
+  metadata?: MessageMeta;
 }
 
 /** Identity of a chat the phone should reopen after login. Doubles as route params. */
@@ -151,9 +157,35 @@ export class RequestPart {
   file_name?: string;
 }
 
+/**
+ * Client metadata the server keeps verbatim for a user turn and hands back in
+ * history. The id is the only identity of a message the phone sent that survives a
+ * reload: the history `id` is re-minted per request (`schemas.py`), so without a
+ * client-stamped key there is no way to tell "this turn is mine" from "this turn
+ * came from the PC".
+ */
+export class OutgoingMeta {
+  qwenpaw_client_message_id?: string;
+}
+
+/**
+ * History's metadata envelope: {original_id, original_name, metadata, timestamp,
+ * finished_at}. `original_id`/`original_name` stay undeclared — nothing on the
+ * phone needs the server's internal naming. The two instants are read: they are
+ * what dates a row in this chat. `finished_at` is when the reply actually landed
+ * (stamped on REPLY_END) and `timestamp` is the turn's creation, which can be far
+ * earlier for a turn that ran long tools; either may be absent on legacy rows.
+ */
+export class MessageMeta {
+  metadata?: OutgoingMeta;
+  timestamp?: string | null;
+  finished_at?: string | null;
+}
+
 export class OutgoingMessage {
   role: string = 'user';
   content: RequestPart[] = [];
+  metadata?: OutgoingMeta;
 }
 
 /** Per-request model pick, read out of the chat body by agents/model_factory.py. */
@@ -191,6 +223,49 @@ export class SlashCommand {
 
 export class CommandListResponse {
   commands: SlashCommand[] = [];
+}
+
+/**
+ * One skill the desktop has installed. A skill runs from the phone by prefixing
+ * the message with `/name` - the server's slash fallback reads SKILL.md and
+ * injects it - so only two things decide whether that prefix will do anything:
+ * `enabled`, and whether `channels` covers the channel the phone sends on
+ * ('console'). 'all' in channels means every channel.
+ *
+ * The response carries version_text / source / tags / last_updated too; the
+ * phone has no view for them, so they are not declared here.
+ */
+export class SkillSpec {
+  /** The name is the identity - there is no separate id. */
+  name: string = '';
+  description: string = '';
+  emoji: string = '';
+  enabled: boolean = false;
+  channels: string[] = [];
+}
+
+/**
+ * One MCP client, narrowed to what a phone may show.
+ *
+ * The server's MCPClientInfo also carries url, headers, command, args and env,
+ * and those are where a bearer token or an API key usually sits. They are
+ * deliberately absent from this shape so no view can reach them by accident:
+ * the phone reads a configuration it has no authority to display.
+ */
+export class MCPClientInfo {
+  key: string = '';
+  name: string = '';
+  description: string = '';
+  enabled: boolean = false;
+  /** stdio | sse | streamable_http - shown as the kind, never the target. */
+  transport: string = '';
+}
+
+/** One tool of an MCP client. input_schema is left out: a phone has no reader for it. */
+export class MCPToolInfo {
+  name: string = '';
+  description: string = '';
+  enabled: boolean = false;
 }
 
 /**

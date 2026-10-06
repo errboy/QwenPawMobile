@@ -15,5 +15,20 @@
 # decrypt on this machine. hvigorfile.ts folds it into the build profile.
 /external-signing-config.json
 
-# Screenshots and response dumps taken while driving the UI on a device.
+# The sample of that file's shape is meant to be published; the real one never is.
+!/external-signing-config.example.json
+
+# This file becomes the repository root's .gitignore once the release tree is
+# split out of QwenPawMobile/, and the rules living above the project root do not
+# come along. A layout dump or a screenshot was ignored here only by that outer
+# file, so a `git add` in the split tree would have had nothing stopping it --
+# and either one shows the address the phone is pointed at.
+/scratch
 /screenshots/
+
+# The v1 sources and the icon layers this project superseded are kept in the
+# private tree to compare against, and are deliberately not published. They are
+# tracked here, so the rules below do nothing on this machine -- they exist so a
+# release split that copies the directory wholesale has something stopping it.
+/_legacy_reference/
+AppScope/backup_*_icons/

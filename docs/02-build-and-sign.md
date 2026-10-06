@@ -9,9 +9,15 @@
 | --- | --- | --- |
 | DevEco Studio | 6.x（实测 `26.0.0.621`） | 自带 hvigor、node、ohpm、SDK 管理器 |
 | HarmonyOS SDK | API 20 及以上 | `build-profile.json5` 声明 `targetSdkVersion` / `compatibleSdkVersion` 均为 `6.0.0(20)` |
-| DevEco CLI | 可选，实测 `1.3.4` | 把 build / run / device / ui / log 串成一条命令，本文命令都以它为例 |
+| DevEco CLI | 实测 `1.3.4`；**随 DevEco Studio 提供**，装了 IDE 再启用它 | 把 build / run / device / ui / log 串成一条命令，本文命令都以它为例 |
 
 没有 CLI 也可以：全部动作用 DevEco Studio 的菜单（Build → Build Hap(s)）+ `hdc install` 完成。
+
+**从哪儿搞到这些**：DevEco Studio 从华为官网下载（<https://cn.devecostudio.huawei.com/>，
+历史版本在 <https://developer.huawei.com/consumer/cn/deveco-studio/archive/>），
+装完在 Settings → OpenHarmony SDK Manager 里确认装了 **API 20** 的 SDK；
+`devecocli` 是 DevEco Studio 带的命令行工具，装了 IDE 再按它的文档启用即可。
+**QwenPaw 桌面版本文档不提供**——它是另一件事，本工程只当它是"你本机已经跑着的那个后端"。
 
 ## 2. 构建
 
@@ -47,6 +53,21 @@ material: {
 重新签名之后，请把 `signingConfigs` 挪回 `external-signing-config.json` 并还原占位，
 不要让带口令的 `build-profile.json5` 进入提交。
 
+**这个文件长什么样**（形状见仓库里的 `external-signing-config.example.json`；
+`hvigorfile.ts` 用 `JSON.parse` 读它，所以必须是**严格 JSON**，不许注释、不许尾逗号）：
+
+```json
+{ "signingConfigs": [ { "name": "default", "type": "HarmonyOS",
+    "material": { "certpath": "…", "keyAlias": "…", "keyPassword": "…",
+                  "profile": "…", "signAlg": "SHA256withECDSA",
+                  "storeFile": "…", "storePassword": "…" } } ] }
+```
+
+**别手写它**：正确的顺序是先跑一次 `devecocli signature generate`（它会把真值写进
+`build-profile.json5`），把那一段 `signingConfigs` **整块复制**成
+`external-signing-config.json`，再把 `build-profile.json5` 还原成空占位。
+手写路径与口令基本不可能对——口令是用**只存在于本机的密钥**加密过的。
+
 ## 4. 取得签名材料
 
 ```bash
@@ -56,6 +77,13 @@ devecocli signature generate         # 生成本地 p12/csr + 云端证书 + 测
 
 产物落在 `~/.ohos/config/`。或者在 DevEco Studio 里
 File → Project Structure → Project → Signing Configs，勾选自动签名。
+
+**换人用之前，先把 `AppScope/app.json5` 里的 `bundleName` 改成你自己的**
+（形如 `com.<你的名字>.qwenpawmobile`：≥3 段、7–128 字符）。仓库里带的那个是**原作者的
+应用标识**，而自动签名的 profile 是按"账号 + bundleName + 设备"生成的——你用自己的华为
+账号去签一个不属于你的 bundleName，装机这一步就可能被拒。改完再跑 `signature generate`，
+顺手把同一个文件里的 `vendor`、以及应用显示名（`label` 指向
+`AppScope/resources/base/element/string.json` 的 `app_name`）一起核一遍。
 
 **没有签名材料时的行为**：`localSigning` 会直接丢掉 `signingConfigs`，
 构建照常成功，只产出 `entry-default-unsigned.hap`，并打印

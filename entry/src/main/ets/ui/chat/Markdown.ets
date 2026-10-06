@@ -4,8 +4,8 @@
  * The desktop console renders full GFM through react-markdown, while the phone
  * rendered every bubble as raw text, so '**bold**' arrived on screen with its
  * asterisks. This covers the handful of constructs an agent actually emits:
- * fenced code, headings, bullet and numbered lists, quotes, rules, and inline
- * bold / italic / strike / code / link.
+ * fenced code, headings, bullet and numbered lists, quotes, rules, tables, and
+ * inline bold / italic / strike / code / link.
  *
  * Anything outside that subset stays literal text. That is the point: an unusual
  * document degrades to exactly what the bubble used to show, never to garbage.
@@ -23,6 +23,13 @@ export class MdKind {
   static readonly list: string = 'list';
   static readonly quote: string = 'quote';
   static readonly rule: string = 'rule';
+  static readonly table: string = 'table';
+}
+
+/** How a table column places its cells, read off the delimiter row. */
+export class MdAlign {
+  static readonly center: string = 'c';
+  static readonly right: string = 'r';
 }
 
 /** One run of same-styled text inside a block. */
@@ -35,11 +42,25 @@ export class MdRun {
   code: boolean = false;
 }
 
+/** One table cell. Its column's alignment is carried per cell so the view
+ *  never has to reach back into the block by index while rendering a row. */
+export class MdCell {
+  runs: MdRun[] = [];
+  align: string = '';
+}
+
+export class MdRow {
+  cells: MdCell[] = [];
+  head: boolean = false;
+}
+
 export class MdBlock {
   kind: string = MdKind.para;
   runs: MdRun[] = [];
   /** Code body, kept per line so a long paste wraps where the reader stops. */
   lines: string[] = [];
+  /** Table rows, header first. Empty for every other kind. */
+  rows: MdRow[] = [];
   /** Bullet or number drawn in front of a list item. */
   marker: string = '';
   /** Heading level, 1 to 6. */
@@ -53,7 +74,25 @@ class MarkerInfo {
   cut: number = 0;
 }
 
+/** A table plus how many source lines it consumed, so the parser can skip them. */
+class TableHit {
+  block: MdBlock = new MdBlock();
+  taken: number = 0;
+}
+
 export class Markdown {
+  /**
+   * GFM backslash escapes only ASCII punctuation. Escaping anything (the old
+   * behaviour) ate the separator of every Windows path the desktop puts in
+   * tool output and in its own attachment notices: `C:\Users\x` rendered as
+   * `C:Usersx`. The desktop's react-markdown keeps `\U`, so this is parity.
+   */
+  private static readonly ESCAPABLE: string = '!"#$%&\'()*+,-./:;<=>?@[\\]^_`{|}~';
+
+  private static isEscapable(c: string): boolean {
+    return c.length === 1 && Markdown.ESCAPABLE.indexOf(c) >= 0;
+  }
+
   static parse(src: string): MdBlock[] {
     const out: MdBlock[] = [];
     const para: string[] = [];
@@ -115,6 +154,13 @@ export class Markdown {
         out.push(block);
         continue;
       }
+      const table = Markdown.tableAt(lines, i);
+      if (table !== undefined) {
+        Markdown.flushPara(out, para);
+        out.push(table.block);
+        i += table.taken - 1;
+        continue;
+      }
       para.push(line);
     }
     Markdown.flushPara(out, para);
@@ -137,7 +183,7 @@ export class Markdown {
     let i: number = 0;
     while (i < s.length) {
       const c: string = s.charAt(i);
-      if (c === '\\' && i + 1 < s.length) {
+      if (c === '\\' && i + 1 < s.length && Markdown.isEscapable(s.charAt(i + 1))) {
         text += s.charAt(i + 1);
         i += 2;
         continue;
@@ -266,6 +312,138 @@ export class Markdown {
 
   private static isQuote(line: string): boolean {
     return Markdown.ltrim(line).startsWith('>');
+  }
+
+  /**
+   * Columns past this are left as text. A phone bubble is roughly two thirds of
+   * the screen, and equal-weight columns at seven cells put every word on its own
+   * line, which is the garbage this parser promises not to produce. The desktop
+   * has the same table on a wider canvas, so the difference is space, not rules.
+   */
+  private static readonly MAX_COLS: number = 6;
+
+  /**
+   * Whether this text holds a table, asked by a bubble before it lays itself out.
+   * A grid can only divide a width it is given, and a bubble that sizes to its
+   * content gives none, so the caller has to know to stop sizing to content.
+   */
+  static hasTable(src: string): boolean {
+    const lines: string[] = src.split('\n');
+    for (let i = 0; i + 1 < lines.length; i++) {
+      if (Markdown.isRow(lines[i]) && Markdown.isDelimiter(lines[i + 1])) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /**
+   * A GFM table is a piped row over a delimiter row (`| --- | :-: |`) plus piped
+   * rows below it. Requiring the delimiter is what keeps a sentence that merely
+   * contains a '|' out of this branch, and requiring the leading '|' keeps a
+   * 'a | b' prose fragment out too.
+   */
+  private static tableAt(lines: string[], at: number): TableHit | undefined {
+    if (at + 1 >= lines.length || !Markdown.isRow(lines[at])
+      || !Markdown.isDelimiter(lines[at + 1])) {
+      return undefined;
+    }
+    const marks: string[] = Markdown.splitCells(lines[at + 1]);
+    const block = new MdBlock();
+    block.kind = MdKind.table;
+    block.rows = [Markdown.rowOf(Markdown.splitCells(lines[at]), marks, true)];
+    let next: number = at + 2;
+    while (next < lines.length && Markdown.isRow(lines[next])) {
+      block.rows.push(Markdown.rowOf(Markdown.splitCells(lines[next]), marks, false));
+      next += 1;
+    }
+    const hit = new TableHit();
+    hit.block = block;
+    hit.taken = next - at;
+    return hit;
+  }
+
+  /** The column count comes from the delimiter row; extras drop, gaps stay empty. */
+  private static rowOf(cells: string[], marks: string[], head: boolean): MdRow {
+    const row = new MdRow();
+    row.head = head;
+    for (let i = 0; i < marks.length; i++) {
+      const cell = new MdCell();
+      cell.align = Markdown.alignOf(marks[i]);
+      cell.runs = Markdown.inline(i < cells.length ? cells[i] : '');
+      row.cells.push(cell);
+    }
+    return row;
+  }
+
+  private static isRow(line: string): boolean {
+    const t: string = Markdown.trim(line);
+    return t.startsWith('|') && Markdown.splitCells(t).length > 1;
+  }
+
+  private static isDelimiter(line: string): boolean {
+    if (!Markdown.trim(line).startsWith('|')) {
+      return false;
+    }
+    const cells: string[] = Markdown.splitCells(line);
+    if (cells.length < 2 || cells.length > Markdown.MAX_COLS) {
+      return false;
+    }
+    for (const cell of cells) {
+      if (!Markdown.isDashCell(cell)) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  /** A delimiter cell is dashes with optional colons on either end. */
+  private static isDashCell(cell: string): boolean {
+    const t: string = Markdown.trim(cell);
+    if (t.indexOf('-') < 0) {
+      return false;
+    }
+    for (let i = 0; i < t.length; i++) {
+      const c: string = t.charAt(i);
+      if (c !== '-' && c !== ':') {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  private static alignOf(mark: string): string {
+    const t: string = Markdown.trim(mark);
+    const left: boolean = t.startsWith(':');
+    const right: boolean = t.endsWith(':');
+    if (left && right) {
+      return MdAlign.center;
+    }
+    return right ? MdAlign.right : '';
+  }
+
+  /** Split a piped line into trimmed cells. An escaped '|' stays inside its cell. */
+  private static splitCells(line: string): string[] {
+    const t: string = Markdown.trim(line);
+    const body: string = t.endsWith('|') ? t.substring(0, t.length - 1) : t;
+    const out: string[] = [];
+    let cur: string = '';
+    for (let i = 1; i < body.length; i++) {
+      const c: string = body.charAt(i);
+      if (c === '\\' && body.charAt(i + 1) === '|') {
+        cur += '|';
+        i += 1;
+        continue;
+      }
+      if (c === '|') {
+        out.push(Markdown.trim(cur));
+        cur = '';
+        continue;
+      }
+      cur += c;
+    }
+    out.push(Markdown.trim(cur));
+    return out;
   }
 
   private static headingDepth(line: string): number {

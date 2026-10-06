@@ -5,6 +5,7 @@
 import { ApiClient } from '../net/ApiClient';
 import { ApprovalActionRequest, ApprovalActionResponse, ApprovalInfo, ApprovalListResponse } from '../model/Dtos';
 import { ApiPath, ApprovalScope } from '../core/Wire';
+import { expectList } from './Shape';
 
 export class ApprovalApi {
   private readonly client: ApiClient;
@@ -22,7 +23,8 @@ export class ApprovalApi {
       ? `?session_id=${encodeURIComponent(sessionId)}` : '';
     const raw = await this.client.get(`${ApiPath.APPROVAL_LIST}${query}`);
     const resp = JSON.parse(raw) as ApprovalListResponse;
-    return resp.pending_approvals === undefined ? [] : resp.pending_approvals;
+    return resp.pending_approvals === undefined ? []
+      : expectList<ApprovalInfo>(resp.pending_approvals, ApiPath.APPROVAL_LIST);
   }
 
   /**
