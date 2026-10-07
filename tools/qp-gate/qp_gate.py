@@ -13,6 +13,7 @@
 用法:
     python qp_gate.py --init            首启：生成 gate.json，交互设置账号、口令与放行网段
     python qp_gate.py                   启动
+    python qp_gate.py --stop            停掉正在监听的那一个：只停认得出是自己的进程
     python qp_gate.py --edit            日常改配置：回车保持原样，可改口令/两个端口/放行网段
     python qp_gate.py --show            打印当前生效配置连每一项的含义后退出
     python qp_gate.py --set-password    换口令
@@ -35,6 +36,7 @@ import json
 import os
 import re
 import secrets
+import signal
 import socket
 import subprocess
 import sys
@@ -449,6 +451,143 @@ class Upstream:
 
     def invalidate(self) -> None:
         self._checked_at = 0.0
+
+
+# ---------------------------------------------------------------- 停止进程
+
+# 读不到命令行时的退让判据：只有名字像 Python 解释器才敢认成"我们自己拉起来的那个"。
+GATE_PROCESS_HINT = re.compile(r"python|qp_gate", re.IGNORECASE)
+
+
+def listening_pids(port: int) -> list:
+    """在这个端口上 LISTENING 的进程号，已排序去重。
+
+    端口从 gate.json 读、绝不写死 61700：改过端口的那台机器上，写死的停止命令只会
+    找到一个没人听的端口，然后报告"本来就没在跑"，而真正在监听的那个还活着。
+    """
+    found: set = set()
+    try:
+        if os.name == "nt":
+            out = run_captured(["netstat", "-ano"], 10).stdout
+            for addr, pid in re.findall(
+                    r"(?m)^\s*TCP\s+(\S+)\s+\S+\s+LISTENING\s+(\d+)\s*$", out):
+                if addr.rpartition(":")[2] == str(port):
+                    found.add(pid)
+        else:
+            out = run_captured(["ss", "-ltnp"], 10).stdout
+            for line in out.splitlines():
+                cols = line.split()
+                if len(cols) < 4 or cols[0] not in ("LISTEN", "LISTENING"):
+                    continue
+                if cols[3].rpartition(":")[2] != str(port):
+                    continue
+                match = re.search(r"pid=(\d+)", line)
+                if match:
+                    found.add(match.group(1))
+    except (OSError, subprocess.SubprocessError, ValueError):
+        return []
+    return sorted(found)
+
+
+def process_identity(pid: str) -> tuple:
+    """(进程名, 命令行)。查不到就交回空串，由 stop_claim 决定要不要退让——绝不因为
+    查不到就直接动手，也绝不查不到就当那个进程不存在。
+
+    Windows 上一次 CIM 调用同时拿名字和命令行：权限不够时它整个返回空，于是走到
+    "认不出就不停"那一侧，这正是失败时该有的方向。pid 必须先过 isdigit，它要被拼进
+    一条 PowerShell 过滤串里。
+    """
+    if not pid.isdigit():
+        return "", ""
+    if os.name == "nt":
+        try:
+            script = (f'Get-CimInstance -ClassName Win32_Process -Filter '
+                      f'"ProcessId={pid}" | ForEach-Object '
+                      '{ $_.Name + "`t" + $_.CommandLine }')
+            out = run_captured(["powershell", "-NoProfile", "-ExecutionPolicy",
+                                "Bypass", "-Command", script], 20).stdout
+        except (OSError, subprocess.SubprocessError, ValueError):
+            return "", ""
+        name, _, cmdline = out.strip().partition("\t")
+        return name.strip(), cmdline.strip()
+    try:
+        name = Path(f"/proc/{pid}/comm").read_text(encoding="utf-8").strip()
+    except OSError:
+        name = ""
+    try:
+        raw = Path(f"/proc/{pid}/cmdline").read_bytes().decode("utf-8", "replace")
+        cmdline = " ".join(part for part in raw.split("\0") if part)
+    except OSError:
+        cmdline = ""
+    return name, cmdline
+
+
+def stop_claim(pid: str) -> tuple:
+    """这个监听进程是不是本工具的守门代理：(能不能停, 一句人话)。
+
+    "端口对上了"不构成杀进程的理由——端口只是配置里的一个数字，而数字会撞车。命令行里
+    带着 qp_gate 是硬证据；只有读不到命令行时才退回到进程名，并且把退让写在日志里。
+    """
+    name, cmdline = process_identity(pid)
+    shown = name or "名字未知"
+    if "qp_gate" in cmdline.lower():
+        return True, f"{shown}（命令行里有 qp_gate）"
+    if cmdline:
+        return False, f"{shown} 占着端口，但命令行是 {cmdline[:100]}，不是守门代理"
+    if GATE_PROCESS_HINT.search(shown):
+        return True, f"{shown}（读不到命令行，按进程名认定）"
+    return False, f"{shown} 占着端口，既读不到命令行也不像 Python，不敢停"
+
+
+def terminate(pid: str) -> bool:
+    try:
+        if os.name == "nt":
+            # /F 是这里唯一可用的形态：控制台进程收不到 WM_CLOSE，而被脚本/后台拉起来
+            # 时根本没有窗口可按 Ctrl+C。服务期只在内存里记登录限流，强杀不丢落盘状态。
+            return run_captured(["taskkill", "/PID", pid, "/F"], 20).returncode == 0
+        os.kill(int(pid), signal.SIGTERM)
+        return True
+    except (OSError, subprocess.SubprocessError, ValueError):
+        return False
+
+
+def waited_for_port_gone(port: int, tries: int = 6) -> bool:
+    """和防火墙那一条同一个教训：taskkill 返回 0 不等于真停了，要回头看连接表。"""
+    for attempt in range(tries):
+        if not listening_pids(port):
+            return True
+        if attempt + 1 < tries:
+            time.sleep(0.5)
+    return False
+
+
+def stop_gate(config: Config) -> bool:
+    port = config.listen_port
+    pids = listening_pids(port)
+    if not pids:
+        log(f"TCP {port} 上没有监听进程：守门代理本来就没在跑")
+        return True
+    for pid in pids:
+        allowed, why = stop_claim(pid)
+        if not allowed:
+            log(f"跳过 PID {pid}: {why}")
+            continue
+        if terminate(pid):
+            log(f"已停止 PID {pid}: {why}")
+        else:
+            log(f"停不掉 PID {pid}: {why}（权限不够或被系统挡住）")
+    if waited_for_port_gone(port):
+        log(f"TCP {port} 已无监听，守门代理停了")
+        log("停止不作废手机上已签发的令牌，也不删防火墙规则："
+            "重启同一份 gate.json 就还是那个账号连得上")
+        return True
+    probe = (f"netstat -ano | findstr :{port}" if os.name == "nt"
+             else f"ss -ltnp | grep :{port}")
+    log(f"TCP {port} 上仍有监听（PID {', '.join(listening_pids(port)) or '未知'}）。"
+        "要么它不是守门代理、要么这一侧停不动它，先自己看一眼：")
+    log(f"    {probe}")
+    log(f"    {hint('--stop')}")
+    return False
 
 
 # ---------------------------------------------------------------- HTTP 原语
@@ -1108,6 +1247,7 @@ def show_config(config: Config) -> None:
     print(f"  max_connections={config.max_connections}   "
           f"login_max_failures={config.login_max_failures}/{config.login_window_seconds}s")
     print("  改口令/端口/网段: " + hint("--edit") + "（每一项以当前值为默认，一路回车什么都不改）")
+    print("  停止: " + hint("--stop") + "（关掉窗口不等于停了进程，这条管的就是没窗口那一个）")
     print("  其余高级项手改上面的 JSON 文件，改完再跑一次 --show 复核")
 
 
@@ -1123,6 +1263,8 @@ def main(argv: list) -> int:
                         help="打印当前生效配置连每一项的含义，然后退出")
     parser.add_argument("--set-password", action="store_true", help="更换口令/用户名")
     parser.add_argument("--discover", action="store_true", help="打印探测到的上游后退出")
+    parser.add_argument("--stop", action="store_true",
+                        help="停掉正在监听的守门代理；认不出是自己的进程绝不动手")
     parser.add_argument("--firewall", action="store_true",
                         help="添加 Windows 入站放行规则（会弹 UAC）")
     parser.add_argument("--no-firewall", action="store_true",
@@ -1143,6 +1285,9 @@ def main(argv: list) -> int:
     if args.edit:
         edit_config(path)
         return 0
+    if args.stop:
+        # 用 read 不用 load：停一个进程不该顺手把缺的 token_secret 补写进配置文件。
+        return 0 if stop_gate(Config.read(path)) else 1
 
     config = Config.load(path)
     if args.port:

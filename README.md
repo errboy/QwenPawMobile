@@ -57,7 +57,7 @@ entry/src/main/ets/
   l10n/     全部用户可见文案（页面里不出现硬编码中文）
   media/    预览字节解码 · 沙箱缓存 · 播放 · 录音
   ui/ pages/组件与三个页面
-tools/qp-gate/                守门代理 + 70 项自检
+tools/qp-gate/                守门代理 + 79 项自检
 docs/                         下面的文档
 ```
 

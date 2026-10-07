@@ -22,6 +22,7 @@ import json
 import os
 import random
 import socket
+import subprocess
 import sys
 import tempfile
 import threading
@@ -714,6 +715,81 @@ def firewall_suite() -> None:
     qp_gate.run_captured = saved_run
 
 
+LISTEN_STUB_SRC = (
+    "import socket, sys, time\n"
+    "s = socket.socket()\n"
+    "s.bind(('127.0.0.1', int(sys.argv[1])))\n"
+    "s.listen(8)\n"
+    "print(s.getsockname()[1], flush=True)\n"
+    "time.sleep(120)\n"
+)
+
+
+def _spawn_listener(tmp: Path, name: str) -> tuple:
+    """起一个真在 LISTENING 的子进程，返回 (Popen, 端口)。
+
+    必须是真子进程：--stop 读的是操作系统的连接表和进程表，本进程里 bind 一个端口既进不了
+    那张表，也证明不了"撞端口时绝不动手"这条最要紧的性质。
+    """
+    script = tmp / name
+    script.write_text(LISTEN_STUB_SRC, encoding="utf-8")
+    proc = subprocess.Popen([sys.executable, str(script), "0"],
+                            stdout=subprocess.PIPE, text=True, errors="replace",
+                            cwd=str(tmp))
+    line = proc.stdout.readline().strip()
+    if not line.isdigit():
+        proc.kill()
+        raise RuntimeError(f"桩监听进程起不来: {line!r}")
+    return proc, int(line)
+
+
+def stop_suite(tmp: Path) -> None:
+    """--stop 的认领与停实：只停认得出是自己的那一个，而且停了要回头看连接表。"""
+
+    def cfg(port: int):
+        path = tmp / f"stop-{port}.json"
+        return qp_gate.Config(gate_config(path, 0, listen_port=port), path)
+
+    free = socket.socket()
+    free.bind(("127.0.0.1", 0))
+    free_port = free.getsockname()[1]
+    free.close()
+    check("没人监听的端口上 --stop 说「本来就没在跑」，不当成失败",
+          qp_gate.stop_gate(cfg(free_port)) is True)
+
+    mine, my_port = _spawn_listener(tmp, "qp_gate_stub.py")
+    try:
+        check("listening_pids 从系统连接表里认出那个监听进程",
+              qp_gate.listening_pids(my_port) == [str(mine.pid)],
+              f"{qp_gate.listening_pids(my_port)} != [{mine.pid}]")
+        allowed, why = qp_gate.stop_claim(str(mine.pid))
+        check("命令行里带 qp_gate 的进程被认领", allowed, why)
+        check("--stop 返回成功", qp_gate.stop_gate(cfg(my_port)) is True)
+        try:
+            mine.wait(timeout=10)
+            gone = True
+        except subprocess.TimeoutExpired:
+            gone = False
+        check("说停了就得真的停了（不看返回值，看进程）", gone, "还在跑")
+        check("停完连接表里再没有这个端口",
+              qp_gate.listening_pids(my_port) == [],
+              str(qp_gate.listening_pids(my_port)))
+    finally:
+        mine.kill()
+        mine.wait()
+
+    stranger, its_port = _spawn_listener(tmp, "other_service.py")
+    try:
+        allowed, why = qp_gate.stop_claim(str(stranger.pid))
+        check("撞端口的外来进程不被认领，哪怕它同样是 python", not allowed, why)
+        check("--stop 拒绝动它就返回失败", qp_gate.stop_gate(cfg(its_port)) is False)
+        check("被拒绝的那个必须还活着——不越权就是这条命令的全部意义",
+              stranger.poll() is None)
+    finally:
+        stranger.kill()
+        stranger.wait()
+
+
 def main() -> int:
     holder = {}
 
@@ -752,6 +828,7 @@ def main() -> int:
         address_suite(Path(tmpdir))
         config_suite(Path(tmpdir))
         firewall_suite()
+        stop_suite(Path(tmpdir))
 
     total = len(RESULTS)
     passed = sum(1 for _n, ok in RESULTS if ok)

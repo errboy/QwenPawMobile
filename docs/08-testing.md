@@ -7,7 +7,7 @@
 | `devecocli check arkts --fix` | 秒级 | 绝大多数 ArkTS 类型/语法错误，比全量构建快得多。**每轮改完跑一次即可，不要每个 edit 跑** |
 | `devecocli check lint` | 秒级 | 代码规约，规则档位见 `code-linter.json5` |
 | `devecocli build` | 分钟级 | 真链接：资源引用、`$media:`/`$string:` 缺失在这里才暴露 |
-| `python tools/qp-gate/selftest.py` | 秒级 | 网关侧 70 项，见 §3 |
+| `python tools/qp-gate/selftest.py` | 秒级 | 网关侧 79 项，见 §3 |
 | `python tools/doc_line_check.py` | 秒级 | 两件事。① 文档里指向代码的那些"文件.ets + 行号"还指得动吗：越界、落在空行、或句子点名的符号在那一行附近已经找不到；顺手查 markdown 相对链接指向的文件还在不在。② 每个 `Copy.fill*` 调用点的占位符数量和它填的那条模板对不对得上（见下面那段） |
 
 ArkTS 比 TS 严：`any`/`unknown` 不允许，对象字面量要有形状，`struct` 的字段初始化是强制的。

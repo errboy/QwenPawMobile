@@ -26,11 +26,12 @@ HTTP 接口，桌面端升级不会让它失效。
 
 ```bat
 start.bat                  : 启动。gate.json 不存在时先引导设置账号、口令与放行网段
+start.bat stop             : 停掉正在监听的那一个（只停它认得出是自己的进程）
 start.bat config           : 改配置：登录用户与口令（可跳过）、两个端口、放行网段
 start.bat password         : 只换手机端登录的用户名与口令
 start.bat discover         : 只看探测到的上游端口，然后退出
 start.bat show             : 打印当前生效配置，连每一项的含义一起打
-start.bat check            : 跑 70 项自检（自带桩上游，不碰真实配置）
+start.bat check            : 跑 79 项自检（自带桩上游，不碰真实配置）
 start.bat firewall         : 单独添加 Windows 入站放行（会弹 UAC）
 start.bat firewall-remove  : 删掉本工具加的防火墙规则
 start.bat help             : 列出上面的命令
@@ -41,8 +42,18 @@ start.bat help             : 列出上面的命令
 它听的是 `0.0.0.0:61700`：局域网里任何知道这个地址的人都能摸到桌面端，中间只隔一个
 登录口令。所以**不用就关掉**，别让它常驻——这是整套门禁里最便宜的一条保护。
 
-- 停止：在那个 cmd 窗口里按 `Ctrl+C`。**但"窗口没了"不等于"进程没了"**——它是被后台或
-  脚本拉起来的时候根本没有窗口，真实踩过一次，一整夜没人发现。所以停完自己确认一遍：
+- 停止：窗口还开着就在那个 cmd 里按 `Ctrl+C`。**"窗口没了"不等于"进程没了"**——它被后台
+  或脚本拉起来的时候根本没有窗口，真实踩过一次，一整夜没人发现。那一种用一条命令收：
+
+  ```bat
+  start.bat stop
+  ```
+
+  它去系统的连接表里找正在 `LISTENING` 配置端口的那个进程，**只停命令行里带着 `qp_gate`
+  的那一个**，杀完再回头看一次连接表才敢说停了（端口从 `gate.json` 读，所以你自己改过端口
+  它照样找得着）。撞上同一个端口的别的服务它拒绝动手，只把那个 PID 和它的命令行打给你看——
+  这时它返回失败，而不是"已停止"。
+- 想自己核一眼（`--stop` 拒绝动的那个进程、或者你想确认防火墙之外的东西）：
 
   ```bat
   netstat -ano | findstr :61700
@@ -112,6 +123,7 @@ python qp_gate.py --config "%TEMP%\qp-gate-drill.json" --init
 ```bat
 python qp_gate.py --init              :: 首启：用户名 + 口令 + 放行网段，并放行防火墙
 python qp_gate.py                     :: 启动
+python qp_gate.py --stop              :: 停掉正在监听的那一个（只停命令行里带 qp_gate 的）
 python qp_gate.py --edit              :: 日常改配置：口令（可跳过）、两个端口、放行网段
 python qp_gate.py --show              :: 打印生效配置连每一项的含义
 python qp_gate.py --discover          :: 只看探测到的上游端口
@@ -133,6 +145,7 @@ python3 qp_gate.py --init
 python3 qp_gate.py                       # 启动；非 Windows 下只提示你自行放行
 python3 qp_gate.py --edit                # 日常改配置：回车保持原样
 python3 qp_gate.py --show                # 手机要填的地址 + 每一项含义
+python3 qp_gate.py --stop                # 停掉正在监听的那一个（同样只停认得出是自己的）
 python3 qp_gate.py --config /tmp/qp-gate-drill.json          # 用临时配置起一个对照实例
 ```
 
@@ -182,21 +195,26 @@ python3 qp_gate.py --config /tmp/qp-gate-drill.json          # 用临时配置�
 python selftest.py
 ```
 
-自带桩上游，不依赖桌面端，也不碰你真实的 `~/.qwenpaw`。70 项覆盖：鉴权面接管与不泄漏、
+自带桩上游，不依赖桌面端，也不碰你真实的 `~/.qwenpaw`。79 项覆盖：鉴权面接管与不泄漏、
 口令错误/限流、伪造与过期令牌、无令牌转发、`Connection` 改写、X-Forwarded-For、SSE 分帧
 到达时间、8MB 请求体字节一致、二进制逐字节一致、畸形与隧道拒绝、网段白名单（含"拒绝必须
 在日志里点出被拒地址"）、上游发现（含乱协议端口不能把发现流程炸掉）、本机地址探测与横幅
 回声（含"不许打 `0.0.0.0` 这种填不进手机的地址"）、日常改配置（一路回车必须一个字都不改、
 改端口不许作废令牌、演练配置不许动系统防火墙）、防火墙放行是否真的落地（**拉起提权进程不
-等于放行成功**，旧版就是这么骗过人的）。改完 `qp_gate.py` 必跑。
+等于放行成功**，旧版就是这么骗过人的）、`--stop` 的认领与停实（只停命令行里带 `qp_gate`
+的那一个；端口上坐着陌生进程时必须拒绝并返回失败，那个进程还得原地活着——不越权就是这条
+命令的全部意义；说"停了"之前回头再看一次连接表）。改完 `qp_gate.py` 必跑。
 
 ## 已知边界
 
 - 只做 HTTP，不做 HTTPS。令牌在局域网里是明文传输的——和桌面端自己的 `/api/console/*`
   一样的暴露面。跨机敏感场景请自己上反代 TLS。
-- 手机端 `Video` 组件播放 `/files/preview` 时加不上 Authorization 头，这条路径依赖上游
-  自身的可访问性，与本工具无关。
+- 要求令牌就意味着：**加不上 `Authorization` 头的消费方取不到媒体**。手机端是把媒体字节
+  自己带令牌取进沙箱、再按 `file://` 播放的（`net/ApiClient.ets`），所以经网关播放没问题；
+  但把 `/files/preview` 的 URL 直接粘进浏览器地址栏、或交给一个不能自定义请求头的播放器，
+  拿到的会是 401。
 - 只放行 `/api` 前缀之外的路由没有意义：客户端所有请求都走 `{server}/api{path}`，非
   `/api` 的路径同样要求令牌。
 
-首启体验与文档上的欠账另记在 [TODO.md](TODO.md)，按"新用户会不会因此连不上"分级。
+首启体验与文档上的欠账另记在同目录的 `TODO.md`，按"新用户会不会因此连不上"分级。那份
+待办只在开发树里，不随本工具发布，所以这里不留链接。

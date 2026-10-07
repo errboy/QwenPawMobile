@@ -35,11 +35,12 @@ Provider 凭据在 `~/.qwenpaw.secret`，本工程不读它、也不该读它。
 
 ```bat
 tools\qp-gate\start.bat                 :: 启动；gate.json 不存在时先引导设账号口令
+tools\qp-gate\start.bat stop            :: 停掉正在监听的那一个（只停它认得出是自己的进程）
 tools\qp-gate\start.bat config          :: 改配置：账号口令（可跳过）、两个端口、放行网段
 tools\qp-gate\start.bat password        :: 只换手机端登录的用户名与口令
 tools\qp-gate\start.bat show            :: 打印当前生效配置，连每一项的含义一起打
 tools\qp-gate\start.bat discover        :: 只看探测到的上游端口
-tools\qp-gate\start.bat check           :: 70 项自检，自带桩上游，不碰真实配置
+tools\qp-gate\start.bat check           :: 79 项自检，自带桩上游，不碰真实配置
 tools\qp-gate\start.bat firewall        :: 单独补一次入站放行（弹 UAC）
 tools\qp-gate\start.bat firewall-remove :: 删掉本工具加的防火墙规则（网关停了它还在）
 tools\qp-gate\start.bat help            :: 列出全部命令
@@ -49,8 +50,15 @@ tools\qp-gate\start.bat help            :: 列出全部命令
 python tools\qp-gate\qp_gate.py --init    :: 首启：设账号口令 + 放行防火墙
 python tools\qp-gate\qp_gate.py --edit    :: 日常改配置（= start.bat config）
 python tools\qp-gate\qp_gate.py           :: 启动
-python tools\qp-gate\selftest.py          :: 70 项自检，自带桩上游，不碰真实配置
+python tools\qp-gate\qp_gate.py --stop    :: 停（只停命令行里带 qp_gate 的那个进程）
+python tools\qp-gate\selftest.py          :: 79 项自检，自带桩上游，不碰真实配置
 ```
+
+`stop` 去系统的连接表里找正在 `LISTENING` 配置端口的那个进程，**只停命令行里带着
+`qp_gate` 的那一个**，杀完回头再看一次连接表才敢说停了；端口上坐着别的服务时它拒绝动手，
+只把那个 PID 和它的命令行打给你看，然后返回失败。**关掉窗口不等于停了进程**——它被脚本
+或后台拉起来时根本没有窗口，这条命令管的就是那一种。停止不作废手机上已签发的令牌，
+也不删防火墙规则。
 
 日常改东西只碰 `start.bat config`：每一项都把当前值当默认，一路回车等于什么都没改，
 完事立刻把生效值打回来。**更高级的字段（令牌有效期、连接上限、限流窗口、监听地址）

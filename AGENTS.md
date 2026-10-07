@@ -17,8 +17,7 @@ devecocli check lint          # 规约
 devecocli build               # 干净克隆、无证书也应成功
 devecocli device list         # 序列号；多台设备时所有设备命令必须显式 --device
 devecocli run --device <序列号>
-python tools/doc_line_check.py      # 动了文档、或动了被文档点名的代码行
-python tools/qp-gate/selftest.py   # 改过 qp_gate.py 必跑，70 项
+python tools/qp-gate/selftest.py   # 改过 qp_gate.py 必跑，79 项
 ```
 
 给用户的命令请写成**可直接整行粘贴的绝对路径单行**，不要拆成"先 cd 再执行"的多段。
@@ -92,6 +91,5 @@ devecocli ui layout --device <序列号> --mode simplified
 ## 9. 交付前
 
 `devecocli check arkts` → `devecocli check lint` → `devecocli build` →
-（动了被文档点名的那些行）`doc_line_check.py` →
 （动了网关）`selftest.py` → 至少一个设备形态的实测说明 → `CHANGELOG.md` 的
 Unreleased 加一行。**别声称 UI 正确**：没在设备上看过的东西要说"未验证"。

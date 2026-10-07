@@ -143,7 +143,17 @@ tools\qp-gate\start.bat config
 **不用的时候把它关掉**——在那个窗口里按 `Ctrl+C`（Mac/Linux 上跑的前台进程一样）。
 它开的是"局域网里谁能摸到你这台电脑"的一扇门，中间只隔一个登录口令；能用不等于该一直开着。
 关掉**不会**要手机重新登录，也**不会**删掉上面那条防火墙放行，所以下次 `tools\qp-gate\start.bat`
-一开，手机直接就连上了。窗口早关了、不确定它还在不在跑：
+一开，手机直接就连上了。
+
+**窗口没了不等于进程没了**——它是被脚本或后台拉起来的时候根本没有窗口。那种也用一条命令收，
+有没有窗口都一样：
+
+```bat
+tools\qp-gate\start.bat stop
+```
+
+它只停这个工具自己拉起来的那个进程；要是端口上恰好坐着别的服务，它会拒绝动手、把那个进程
+指给你看，然后告诉你没停——不会替你杀掉不认识的东西。想自己核一眼还在不在跑：
 
 ```bat
 netstat -ano | findstr :61700
@@ -158,6 +168,7 @@ netstat -ano | findstr :61700
 ```bash
 python3 tools/qp-gate/qp_gate.py --init     # 首次：设账号口令
 python3 tools/qp-gate/qp_gate.py           # 启动
+python3 tools/qp-gate/qp_gate.py --stop    # 停（同样的认领规则，认不出是自己的就不动）
 ```
 
 防火墙这一步它不代劳，你自己放行 TCP `61700`（`sudo ufw allow 61700/tcp`）。

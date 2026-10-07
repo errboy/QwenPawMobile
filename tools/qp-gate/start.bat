@@ -2,6 +2,7 @@
 rem qp-gate launcher. With no argument it starts the gate.
 rem
 rem   start.bat                 start serving (runs --init first when gate.json is missing)
+rem   start.bat stop            stop the gate that is listening (only one it can identify)
 rem   start.bat config          change the settings: login, ports, allowed subnets
 rem   start.bat password        change the phone login user and password
 rem   start.bat discover        print the desktop upstream port the gate found, then exit
@@ -47,6 +48,7 @@ pause
 exit /b 1
 
 :pyok
+if /i "%~1"=="stop" goto stop
 if /i "%~1"=="password" goto password
 if /i "%~1"=="config" goto config
 if /i "%~1"=="discover" goto discover
@@ -69,6 +71,12 @@ goto editfailed
 %PY% qp_gate.py
 if not errorlevel 1 goto done
 goto failed
+
+:stop
+if not exist "gate.json" goto noconfig
+%PY% qp_gate.py --stop
+if not errorlevel 1 goto done
+goto stopfailed
 
 :password
 if not exist "gate.json" goto noconfig
@@ -135,6 +143,7 @@ echo.
 :usage
 echo [qp-gate] commands (also: start.bat help):
 echo   start.bat                 start serving
+echo   start.bat stop            stop the gate that is listening
 echo   start.bat config          change the settings: login, ports, allowed subnets
 echo   start.bat password        change the phone login user and password
 echo   start.bat discover        print the upstream port the gate found
@@ -158,6 +167,18 @@ echo     (run: start.bat show)
 echo Copy one whole line and retry:
 echo   %PY% "%~dp0qp_gate.py" --set-password
 echo   %PY% "%~dp0qp_gate.py" --discover
+pause
+endlocal
+exit /b 1
+
+:stopfailed
+rem A gate that is still listening is not a gate that was stopped. --stop only kills a
+rem process whose own command line names qp_gate, so a stranger holding the port is
+rem left running on purpose, and the lines above name the PID it refused.
+echo [qp-gate] something still listens on the configured port. Read the lines above:
+echo   a process --stop could not identify as the gate was left running on purpose.
+echo Copy one whole line and retry:
+echo   %PY% "%~dp0qp_gate.py" --stop
 pause
 endlocal
 exit /b 1

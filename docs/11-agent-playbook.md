@@ -86,8 +86,8 @@ cd /d <root> && devecocli log --device <序列号> --level W --bundle-name com.l
 | 网关逻辑有没有坏 | `<root>\tools\qp-gate\start.bat check` | **跑的是自带桩上游**，不和真实网关抢 61700，可放心跑；但它过了**不等于**联调过了 |
 | 改端口/网段/口令 | `<root>\tools\qp-gate\start.bat config` | **每一项默认就是当前值**，一路回车 = 什么都没改。**必须用户在键盘上敲**（口令只走交互输入）。改端口会追加一次防火墙放行 → **第 2 件人来做的事（UAC）** |
 | 网关是不是已经在跑 | `netstat -ano | findstr :61700` 拿 PID，再看进程命令行 | 报 `OSError [Errno 10048] bind 0.0.0.0:61700` **多半不是故障，是已经有一个实例在跑**。别急着重启，更别换端口绕开——两个网关会抢上游发现 |
-| 停止网关 | 优先用它自己窗口的 Ctrl+C；**进程是脱离窗口起的（后台/脚本拉起）时只能按 PID 停**：`netstat -ano \| findstr :61700` 取 PID → `taskkill /PID <pid> /F` | 两种停法**都不删防火墙规则**（下面两行）。按 PID 停之前一定先看那一列的进程命令行，确认那是 `qp_gate.py` 而不是恰好同端口的别的东西 |
-| 放行口子还在不在 | `netsh advfirewall firewall show rule name=qp-gate` | 只读。**Ctrl+C 和 taskkill 都不删规则**，重启后还在。但**没有监听者的规则是死的**：端口上没人 accept，局域网打进来只是连不上。所以查暴露面要 `netstat` 看 `LISTENING`，`show rule` 只用来查"以后还会不会自动通" |
+| 停止网关 | `<root>\tools\qp-gate\start.bat stop`（窗口还开着也可以直接 `Ctrl+C`） | 它按 `gate.json` 里的端口去系统连接表找 `LISTENING` 的那个进程，**只停命令行里带 `qp_gate` 的那一个**，停了再回查一次连接表；端口上坐着同端口的别的服务时它**拒绝动手并返回失败**，只把 PID 和命令行打出来。手工按 PID 停（`netstat -ano \| findstr :61700` → `taskkill /PID <pid> /F`）仍是退路，用之前一定先看那一列的进程命令行 |
+| 放行口子还在不在 | `netsh advfirewall firewall show rule name=qp-gate` | 只读。**Ctrl+C、`stop` 和 taskkill 都不删规则**，重启后还在。但**没有监听者的规则是死的**：端口上没人 accept，局域网打进来只是连不上。所以查暴露面要 `netstat` 看 `LISTENING`，`show rule` 只用来查"以后还会不会自动通" |
 | 收回放行口子 | `<root>\tools\qp-gate\start.bat firewall-remove` | 按规则名 `qp-gate` 整体删（它加过的端口一次全清）。要 UAC → **人来点**。删完再 `show rule` 确认没了 |
 
 **`upstream_port` 保持 `0`（自动发现）是最佳默认**，不要为了"看起来更稳"去钉死端口：

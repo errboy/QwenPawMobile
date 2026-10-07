@@ -6,7 +6,17 @@
 
 ## [Unreleased]
 
-（暂无。真机 §7 那一轮仍欠着，见 [docs/08-testing.md](docs/08-testing.md) §7。）
+- `tools/qp-gate`：新增 `start.bat stop` / `python qp_gate.py --stop`。**关掉网关窗口不等于
+  停了进程**——它被脚本或后台拉起来时根本没有窗口，这种以前只能自己 `netstat` 取 PID 再
+  `taskkill`，而按 PID 停要求你先确认那个进程确实是本工具（同端口上可能坐着别的服务）。
+  现在它按 `gate.json` 里的端口去系统连接表找 `LISTENING` 的进程，**只停命令行里带 `qp_gate`
+  的那一个**，停了再回查一次连接表才敢说停了；认不出是自己的就拒绝动手、把那个 PID 和它的
+  命令行打出来并返回失败。停止不作废已签发的令牌，也不删防火墙规则（同 `Ctrl+C`）。
+  `selftest.py` 从 70 项增至 **79 项**：真起两个监听子进程，一个认领并停掉、再用
+  `wait()` 证明进程真没了，另一个（同为 python.exe、命令行不带 `qp_gate`）**必须被拒绝而且
+  原地活着**——不越权是这条命令的全部意义。Windows 实测；非 Windows 分支（`ss -ltnp` +
+  `SIGTERM`）代码就位但本机未实测。
+- 真机 §7 那一轮仍欠着，见 [docs/08-testing.md](docs/08-testing.md) §7。
 
 ## [1.1.0] - 2026-10-07
 
