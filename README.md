@@ -63,7 +63,6 @@ docs/                         下面的文档
 | [SECURITY.md](SECURITY.md) | 已知安全边界（含明文口令存储这个取舍） |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | 代码风格、提交与 PR 约定 |
 | [AGENTS.md](AGENTS.md) | 给 AI agent 的操作手册 |
-| [docs/12-release.md](docs/12-release.md) | 维护者怎么发版：两棵树的镜像、闸门在发布树重跑、tag 与 Release，以及哪三件事必须本人在场 |
 
 ## 快速开始
 

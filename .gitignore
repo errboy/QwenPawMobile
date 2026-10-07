@@ -33,8 +33,9 @@
 /_legacy_reference/
 AppScope/backup_*_icons/
 
-# Same case for the maintainer-only ledger and changelog detail: tracked here, kept
-# out of the export by name (docs/12 §3), and named here so a wholesale directory
-# copy has something stopping it too. A NEW file under it needs `git add -f` in this
-# tree; editing the tracked ones does not.
+# Same case for the maintainer-only records (verification ledger, changelog detail,
+# and the release procedure itself): tracked here, kept out of the export by name, and
+# named here so a wholesale directory copy has something stopping it too. The cost,
+# measured: `git add <file>` under this directory still stages a tracked file, but git
+# prints "paths are ignored" and exits non-zero, and a NEW file needs `git add -f`.
 /maintainer/
