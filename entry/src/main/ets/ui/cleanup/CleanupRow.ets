@@ -23,17 +23,29 @@ export struct CleanupRow {
   onPick: (on: boolean) => void = (): void => {};
   onToggle: () => void = (): void => {};
 
+  /**
+   * A row with nothing on the device shows no control at all rather than a greyed
+   * one: ArkUI washes a disabled Checkbox down to ~1.4:1 against the card, which
+   * fails the store's graphic-contrast bar, and a dead tick box promises a pick
+   * that cannot happen. The dimmed label and 'nothing to clean' line say it.
+   */
   build() {
     Row({ space: AppSpace.sm }) {
-      Checkbox()
-        .select(this.on)
-        .enabled(this.available)
-        .width(24)
-        .height(24)
-        .selectedColor(AppColor.accent)
-        .onChange((value: boolean): void => {
-          this.onPick(value);
-        })
+      if (this.available) {
+        Checkbox()
+          .select(this.on)
+          .width(24)
+          .height(24)
+          .selectedColor(AppColor.accent_action)
+          .unselectedColor(AppColor.border_strong)
+          .onChange((value: boolean): void => {
+            this.onPick(value);
+          })
+      } else {
+        Column()
+          .width(24)
+          .height(24)
+      }
       Column({ space: AppSpace.xxs }) {
         Text(this.label)
           .fontSize(AppType.body)

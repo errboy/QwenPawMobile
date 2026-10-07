@@ -2,41 +2,42 @@
   "color": [
     { "name": "start_window_background", "value": "#F9F8F4" },
 
-    { "name": "app_accent", "value": "#FF7F16" },
-    { "name": "app_accent_active", "value": "#CC6612" },
-    { "name": "app_accent_text", "value": "#B85B10" },
+    { "name": "app_accent_action", "value": "#C25700" },
+    { "name": "app_on_action", "value": "#FFFFFF" },
+    { "name": "app_accent_text", "value": "#A7520F" },
     { "name": "app_accent_faint", "value": "#0AFF7F16" },
     { "name": "app_accent_soft", "value": "#1AFF7F16" },
-    { "name": "app_accent_border", "value": "#6BFF7F16" },
 
     { "name": "app_bg", "value": "#F9F8F4" },
     { "name": "app_surface", "value": "#FFFFFF" },
     { "name": "app_surface_subtle", "value": "#FAF9F7" },
     { "name": "app_surface_raised", "value": "#FFFFFF" },
     { "name": "app_surface_sunken", "value": "#F9F8F4" },
+    { "name": "app_bubble_mine", "value": "#FFE9D6" },
+    { "name": "app_bubble_mine_border", "value": "#F0C49B" },
     { "name": "app_scrim", "value": "#1D1B16" },
 
     { "name": "app_fill_strong", "value": "#17000000" },
     { "name": "app_fill", "value": "#0F000000" },
 
     { "name": "app_border", "value": "#EAE8E7" },
-    { "name": "app_border_strong", "value": "#D8D4CF" },
+    { "name": "app_border_strong", "value": "#988D80" },
     { "name": "app_border_subtle", "value": "#F0EEEB" },
 
     { "name": "app_text", "value": "#E1141413" },
-    { "name": "app_text_secondary", "value": "#94141413" },
-    { "name": "app_text_tertiary", "value": "#73141413" },
-    { "name": "app_text_quaternary", "value": "#40141413" },
+    { "name": "app_text_secondary", "value": "#BA141413" },
+    { "name": "app_text_tertiary", "value": "#A4141413" },
+    { "name": "app_text_quaternary", "value": "#98141413" },
     { "name": "app_text_inverse", "value": "#FFFFFF" },
 
     { "name": "app_info_bg", "value": "#0F1677FF" },
     { "name": "app_info_border", "value": "#291677FF" },
     { "name": "app_info_text", "value": "#1668DC" },
 
-    { "name": "app_success", "value": "#52C41A" },
+    { "name": "app_success", "value": "#357E11" },
 
     { "name": "app_warning", "value": "#FAAD14" },
-    { "name": "app_warning_text", "value": "#D48806" },
+    { "name": "app_warning_text", "value": "#9D6404" },
     { "name": "app_warning_bg", "value": "#FFFBE6" },
     { "name": "app_warning_border", "value": "#FFE58F" },
 

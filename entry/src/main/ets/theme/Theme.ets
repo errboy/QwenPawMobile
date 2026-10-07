@@ -10,18 +10,26 @@
 import { Bp } from '../core/Breakpoint';
 
 export class AppColor {
-  static readonly accent: Resource = $r('app.color.app_accent');
-  static readonly accent_active: Resource = $r('app.color.app_accent_active');
+  /**
+   * Brand orange is split by role: `accent_action` is the only fill that carries
+   * ink (it is dark enough for white text, the bright brand tone was not), and the
+   * `*_soft`/`*_faint` tints stay for backgrounds that take normal text on them.
+   * tools/contrast_check.py holds every pair at the store's 4.5:1 / 3:1 rule.
+   */
+  static readonly accent_action: Resource = $r('app.color.app_accent_action');
+  static readonly on_action: Resource = $r('app.color.app_on_action');
   static readonly accent_text: Resource = $r('app.color.app_accent_text');
   static readonly accent_faint: Resource = $r('app.color.app_accent_faint');
   static readonly accent_soft: Resource = $r('app.color.app_accent_soft');
-  static readonly accent_border: Resource = $r('app.color.app_accent_border');
 
   static readonly bg: Resource = $r('app.color.app_bg');
   static readonly surface: Resource = $r('app.color.app_surface');
   static readonly surface_subtle: Resource = $r('app.color.app_surface_subtle');
   static readonly surface_raised: Resource = $r('app.color.app_surface_raised');
   static readonly surface_sunken: Resource = $r('app.color.app_surface_sunken');
+  /** Outgoing bubble: a tinted surface, so its text is the normal `text` ink. */
+  static readonly bubble_mine: Resource = $r('app.color.app_bubble_mine');
+  static readonly bubble_mine_border: Resource = $r('app.color.app_bubble_mine_border');
   /** Backdrop behind a full-screen image; white text on it reads in both themes. */
   static readonly scrim: Resource = $r('app.color.app_scrim');
 
@@ -33,6 +41,8 @@ export class AppColor {
   static readonly border_subtle: Resource = $r('app.color.app_border_subtle');
 
   static readonly text: Resource = $r('app.color.app_text');
+  // Four levels, and every one of them has to clear 4.5:1 on its own surface: the
+  // store's rule leaves less room between them than a hand-picked ladder assumes.
   static readonly text_secondary: Resource = $r('app.color.app_text_secondary');
   static readonly text_tertiary: Resource = $r('app.color.app_text_tertiary');
   static readonly text_quaternary: Resource = $r('app.color.app_text_quaternary');

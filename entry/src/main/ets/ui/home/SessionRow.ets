@@ -23,8 +23,8 @@ export struct ForegroundCard {
       Row({ space: AppSpace.xs }) {
         Text(Copy.home_foreground_badge)
           .fontSize(AppType.caption)
-          .fontColor(AppColor.text_inverse)
-          .backgroundColor(AppColor.accent)
+          .fontColor(AppColor.on_action)
+          .backgroundColor(AppColor.accent_action)
           .padding({ left: AppSpace.sm, right: AppSpace.sm, top: AppSpace.xxs, bottom: AppSpace.xxs })
           .borderRadius(AppRadius.control)
         if (this.running()) {
@@ -56,7 +56,7 @@ export struct ForegroundCard {
     .padding(AppSpace.md)
     .backgroundColor(AppColor.surface)
     .borderRadius(AppRadius.card)
-    .border({ width: AppLine.emphasis, color: AppColor.accent })
+    .border({ width: AppLine.emphasis, color: AppColor.accent_action })
     .onClick(() => {
       this.onOpen(this.chat);
     })

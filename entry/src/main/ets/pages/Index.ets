@@ -181,7 +181,7 @@ struct Index {
       Row()
         .width(AppSize.status_dot)
         .height(AppSize.status_dot)
-        .backgroundColor(t.online ? AppColor.success : AppColor.fill_strong)
+        .backgroundColor(t.online ? AppColor.success : AppColor.border_strong)
         .borderRadius(AppRadius.pill)
       Column({ space: AppSpace.xxs }) {
         Text(this.labelOf(t))
@@ -205,7 +205,7 @@ struct Index {
     .backgroundColor(this.selected === t.url ? AppColor.accent_soft : AppColor.surface)
     .border({
       width: this.selected === t.url ? AppLine.emphasis : AppLine.thin,
-      color: this.selected === t.url ? AppColor.accent_border : AppColor.border_subtle
+      color: this.selected === t.url ? AppColor.accent_action : AppColor.border_subtle
     })
     .borderRadius(AppRadius.row)
     .onClick(() => {

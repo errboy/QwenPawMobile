@@ -364,7 +364,7 @@ export struct Composer {
         // It clears the text only — every tray chip carries its own ×.
         Text('×')
           .fontSize(AppType.title)
-          .fontColor(this.text.length > 0 ? AppColor.error : AppColor.text_quaternary)
+          .fontColor(this.text.length > 0 ? AppColor.error_text : AppColor.text_quaternary)
           .textAlign(TextAlign.Center)
           .width(AppSize.icon_hit)
           .height(AppSize.icon_hit)
@@ -446,7 +446,7 @@ export struct Composer {
           Button(this.holdLabel())
             .type(ButtonType.Normal)
             .fontSize(AppType.body)
-            .fontColor(this.rising ? AppColor.warning : AppColor.accent_text)
+            .fontColor(this.rising ? AppColor.warning_text : AppColor.accent_text)
             .backgroundColor(AppColor.surface)
             .border({ width: AppLine.thin, color: AppColor.border })
             .borderRadius(AppRadius.control)

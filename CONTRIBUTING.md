@@ -70,6 +70,8 @@ git status --short
   [docs/02](docs/02-build-and-sign.md)），所以"构建过了"不代表你能装机。
 - `python tools/doc_line_check.py` 管三件事：文档里的代码行引用、markdown 相对链接、
   `Copy.fill*` 的占位符数量。后两样 ArkTS 与 lint 都不报，**只在屏幕上说谎**。
+- `python tools/contrast_check.py` 管颜色：动了 `resources/*/element/color.json` 或加了
+  `AppColor` token 就跑它。对比度不合规同样不报错、不报警，只是有人读不清。
 
 大 PR 拆小；一个 PR 只做一件事。行为变更比代码变更更需要证据。
 打 tag、发 Release、往 `main` 推东西都由维护者做，贡献者把 PR 做好即可。

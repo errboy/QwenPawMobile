@@ -1742,7 +1742,7 @@ struct ChatPage {
         Row({ space: AppSpace.sm }) {
           Text('●')
             .fontSize(AppType.body)
-            .fontColor(AppColor.warning)
+            .fontColor(AppColor.warning_text)
           Text(Copy.fill(Copy.chat_recording, this.recordClock()))
             .fontSize(AppType.caption)
             .fontColor(AppColor.text_secondary)
@@ -1836,7 +1836,7 @@ struct ChatPage {
           LoadingProgress()
             .width(AppSize.icon_md)
             .height(AppSize.icon_md)
-            .color(AppColor.accent)
+            .color(AppColor.accent_action)
           Text(Copy.notice_uploading)
             .fontSize(AppType.caption)
             .fontColor(AppColor.text_tertiary)

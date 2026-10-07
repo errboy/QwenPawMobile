@@ -38,6 +38,7 @@
 - [ ] `devecocli build` 成功（无证书也应成功）
 - [ ] 改了 `qp_gate.py` → `python tools/qp-gate/selftest.py` 全过
 - [ ] 改了文档或 `Copy.fill*` 占位符 → `python tools/doc_line_check.py` 0 problems
+- [ ] 改了色板或 `AppColor` token → `python tools/contrast_check.py` 0 problems
 - [ ] 影响 UI → 至少一个真机 / 模拟器形态的实测说明（截图不入库，写在描述里）
 - [ ] 涉及审批 / 鉴权 / 绑定地址 → 已先开 issue 讨论
 - [ ] `CHANGELOG.md` 的 Unreleased 加了一行

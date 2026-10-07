@@ -119,10 +119,12 @@ export struct MarkdownView {
             .fontSize(size)
             .fontColor(AppColor.accent_text)
         } else if (run.link) {
+          // The underline is what marks a link, so it can share the code span's
+          // colour: that one clears 4.5:1 on every bubble, the brand tone did not.
           Span(run.text)
             .fontSize(size)
-            .fontColor(AppColor.accent_active)
-            .decoration({ type: TextDecorationType.Underline, color: AppColor.accent_active })
+            .fontColor(AppColor.accent_text)
+            .decoration({ type: TextDecorationType.Underline, color: AppColor.accent_text })
         } else {
           Span(run.text)
             .fontSize(size)

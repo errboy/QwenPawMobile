@@ -37,7 +37,7 @@ export struct CleanupFileRow {
         .select(this.on)
         .width(TICK)
         .height(TICK)
-        .selectedColor(AppColor.accent)
+        .selectedColor(AppColor.accent_action)
         .unselectedColor(AppColor.border_strong)
         .onChange((value: boolean): void => {
           this.onPick(value);

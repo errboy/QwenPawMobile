@@ -72,7 +72,7 @@ export struct McpPanel {
           .layoutWeight(1)
         Text(row.enabled ? row.transport : Copy.mcp_off)
           .fontSize(AppType.caption)
-          .fontColor(row.enabled ? AppColor.text_tertiary : AppColor.warning)
+          .fontColor(row.enabled ? AppColor.text_tertiary : AppColor.warning_text)
       }
 
       if (row.description.length > 0) {

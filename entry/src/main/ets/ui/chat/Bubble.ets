@@ -263,7 +263,7 @@ export struct Bubble {
       // The fill still marks playing and nothing else; a delivery only adds the
       // outline, so the one state cue the pill has is not diluted by the other.
       .backgroundColor(this.item.audioPlaying ? AppColor.accent_soft : AppColor.surface_subtle)
-      .border(delivery ? { width: AppLine.emphasis, color: AppColor.accent }
+      .border(delivery ? { width: AppLine.emphasis, color: AppColor.accent_action }
         : { width: 0, color: AppColor.border_subtle })
       .padding(AppSpace.sm)
       .borderRadius(AppRadius.card)
@@ -303,7 +303,7 @@ export struct Bubble {
       // picked out of a screen full of folded cards; the outgoing receipt of a file
       // the user sent themselves is not, so only the incoming one takes the accent.
       .backgroundColor(delivery ? AppColor.accent_soft : AppColor.surface_subtle)
-      .border(delivery ? { width: AppLine.emphasis, color: AppColor.accent }
+      .border(delivery ? { width: AppLine.emphasis, color: AppColor.accent_action }
         : { width: AppLine.thin, color: AppColor.border_subtle })
       .padding(AppSpace.sm)
       .borderRadius(AppRadius.card)
@@ -388,13 +388,15 @@ export struct Bubble {
         }
         if (this.item.text.length > 0) {
           // The composer's own quote feature writes markdown (`> ` lines), and a
-          // plain Text would show the user the markup instead of the quote. The
-          // tint is what keeps the answer's colours out of the accent bubble.
+          // plain Text would show the user the markup instead of the quote. The tint
+          // is what keeps the answer's colours out of the sender's bubble, and the
+          // fill is a tint rather than the brand orange so this ink clears 4.5:1.
           Column() {
-            MarkdownView({ src: this.item.text, tint: AppColor.text_inverse })
+            MarkdownView({ src: this.item.text, tint: AppColor.text })
           }
           .alignItems(HorizontalAlign.Start)
-          .backgroundColor(AppColor.accent)
+          .backgroundColor(AppColor.bubble_mine)
+          .border({ width: AppLine.thin, color: AppColor.bubble_mine_border })
           .padding(AppSpace.sm)
           .borderRadius(AppRadius.card)
           .width(this.bodyW())

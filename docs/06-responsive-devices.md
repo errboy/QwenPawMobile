@@ -15,7 +15,7 @@ deviceType 始终报 `phone`。所以布局键是**窗口宽度（vp）**，不�
 
 阈值在 `core/Breakpoint.ets:21`，与系统断点一致；取值逻辑在 `core/Breakpoint.ets:98-110`
 （先按窗口矩形算，UIContext 存在后再按系统能力复核）。`xs` 保留为声明桶、不并进 `sm`：
-`AppMeasure.text`（`theme/Theme.ets:133`）与 `AppMeasure.panel`（`theme/Theme.ets:141`）对这两桶
+`AppMeasure.text`（`theme/Theme.ets:142`）与 `AppMeasure.panel`（`theme/Theme.ets:150`）对这两桶
 返回同一个值，合并没有收益，只会破坏"桶 = 系统断点"这条。
 
 ## 2. 实测过的形态
