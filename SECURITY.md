@@ -168,7 +168,7 @@ git grep -nEi "(storePassword|keyPassword)[\"']?\s*[:=]\s*[\"'][^\"']+" -- '*.js
 
 - 手机自己**只**向用户填的那个服务器地址发请求，没有埋点、没有广告 SDK。
   但要说准：转录里若带绝对 `http(s)` 链接，图片/视频/音频会按那个链接直接加载
-  （`Parts.isDirectUrl()`，`model/Parts.ets:256` → `MediaLoader.isDirect()`（`media/MediaLoader.ets:84,107,122`）），
+  （`Parts.isDirectUrl()`，`model/Parts.ets:368` → `MediaLoader.isDirect()`（`media/MediaLoader.ets:84,107,122`）），
   也就是说**一条消息能让手机去访问第三方 URL** —— 那是消息内容，不是本 App 的遥测。
 - 本地存：服务器地址列表、账号、令牌、会话偏好、草稿、主题与布局开关，以及为播放而缓存的
   媒体字节和发出去也留着的录音（§3.6）。这些在主页那行「清理」进分类清理页，

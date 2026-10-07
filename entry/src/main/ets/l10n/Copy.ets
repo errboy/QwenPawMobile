@@ -290,6 +290,12 @@ export class Copy {
   static readonly chat_reasoning_expand: string = '▾ 看想法';
   static readonly chat_reasoning_collapse: string = '▴ 收起';
   static readonly chat_tool_label: string = '🔧 %s';
+  /**
+   * A card that handed over a file is titled by that file, not by the tool: a row of
+   * `🔧 send_file_to_user` cards is unreadable at a glance, and the name is what the
+   * user scrolls to find. The tool's own name stays under it, so nothing is hidden.
+   */
+  static readonly chat_tool_delivery: string = '📁 %s';
   static readonly chat_tool_output_suffix: string = ' · 输出';
   /** A tool card arrives folded; the cue says which way this tap takes it. */
   static readonly chat_tool_expand: string = '▾ 看详情';
@@ -313,6 +319,11 @@ export class Copy {
   static readonly notice_audio_failed: string = '语音播放失败：%s';
   static readonly chat_audio_unavailable: string = '语音暂不可用';
   static readonly chat_file_unavailable: string = '文件暂不可用';
+  /**
+   * Name for a file the tool inlined without naming it. There is no path to read a
+   * leaf off, so the bubble would otherwise show the tail of a base64 payload.
+   */
+  static readonly chat_file_inline: string = '内嵌文件';
   /** Second line of a file bubble: what kind of file it is, then where the bytes are. */
   static readonly chat_file_kind: string = '%s 文件';
   static readonly chat_file_kind_unknown: string = '未知类型';

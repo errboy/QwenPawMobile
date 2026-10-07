@@ -48,6 +48,7 @@ function partTemplates(): PartTemplates {
   t.audio = Copy.chat_part_audio;
   t.fileTemplate = Copy.chat_part_file;
   t.unknownTool = Copy.chat_default_tool_name;
+  t.inlineFile = Copy.chat_file_inline;
   t.outputSuffix = Copy.chat_tool_output_suffix;
   return t;
 }
@@ -673,6 +674,27 @@ export class ChatStore implements RunSink, PollTarget {
         + (ToolTypes.isOutput(type) ? this.templates.outputSuffix : '');
       m.text = Parts.clip(Parts.asText(ToolTypes.isOutput(type) ? data?.output : data?.arguments),
         this.templates.toolClipChars);
+      // History keeps a sent file the same way the stream does — inside the tool's
+      // output — so reopening a chat has to list those files too, or the transcript
+      // the user watched fill up would lose its attachments on the way back.
+      const media = ToolTypes.isOutput(type)
+        ? Parts.toolMedia(src.content, this.templates) : undefined;
+      const files = media === undefined ? [] : media.files;
+      if (files.length > 0) {
+        for (const f of files) {
+          if (f.kind === ContentType.IMAGE) {
+            m.imageRef = f.ref;
+          } else if (f.kind === ContentType.VIDEO) {
+            m.videoRef = f.ref;
+          } else if (f.kind === ContentType.AUDIO) {
+            m.audioRef = f.ref;
+          } else {
+            m.fileRef = f.ref;
+            m.fileName = f.name;
+          }
+        }
+        m.text = Parts.clip(Parts.str(media?.text), this.templates.toolClipChars);
+      }
       return m;
     }
     if (type === MsgType.REASONING) {
