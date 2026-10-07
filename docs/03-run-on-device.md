@@ -73,16 +73,14 @@ devecocli ui dircfling up --device <序列号>              # 列表滚动
 ## 5. 看日志
 
 ```bash
-devecocli log --device <序列号> --bundle-name com.liaocaosix.qwenpawmobile --tail 200
+devecocli log --device <序列号> --bundle-name <bundle> --tail 200
 devecocli log --device <序列号> --crash
 devecocli log --device <序列号> --level W --from 5m
 ```
 
+`<bundle>` 是 `AppScope/app.json5` 里那个 `bundleName`。仓库自带的是 `com.liaocaosix.qwenpawmobile`，
+而 [02](02-build-and-sign.md) 让你签名前先改成自己的应用标识 —— **改过之后，命令里写旧值一行日志都抓不到**，
+把 `<bundle>` 换成你改成的那个值。后面几篇里的 `<bundle>` 同义。
+
 **真机（user 版系统）会裁掉 INFO 级日志**，工程里的 `core/Log.ets` 因此把常规信息
 发到更高等级；排查时先 `--level W`，别因为"一条 INFO 都没有"以为进程没起来。
-
-## 6. 改了代码之后
-
-增量走 `--apply`，全量走 `devecocli run`，判断表在 [02-build-and-sign.md](02-build-and-sign.md) 第 6 节。
-资源文件（`resources/**`）和 `module.json5` 的改动**必须**全量重装，
-`--apply` 与 `--skip-build` 都不会带上。

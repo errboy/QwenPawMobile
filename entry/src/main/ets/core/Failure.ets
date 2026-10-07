@@ -26,13 +26,17 @@ interface TransportShape {
   message?: string;
 }
 
+interface DetailShape {
+  detail?: string;
+}
+
 export class Failure extends Error {
   kind: FailureKind = FailureKind.Unknown;
   /** HTTP status, or 0 when the request never got a response. */
   httpStatus: number = 0;
   /** Raw transport code from @kit.NetworkKit, kept for diagnostics. */
   transportCode: number = 0;
-  /** Server-supplied detail (FastAPI `detail` or a body snippet). */
+  /** Server-supplied sentence, from a FastAPI/gate `{"detail": "..."}` body. */
   detail: string = '';
 
   constructor(kind: FailureKind, message: string) {
@@ -63,11 +67,33 @@ export class Failure extends Error {
     return status >= 500 ? FailureKind.Server : FailureKind.Rejected;
   }
 
-  static http(status: number, detail: string, path: string): Failure {
+  static http(status: number, body: string, path: string): Failure {
     const f = new Failure(Failure.byStatus(status), `HTTP ${status} ${path}`);
     f.httpStatus = status;
-    f.detail = detail;
+    f.detail = Failure.serverDetail(body);
     return f;
+  }
+
+  /**
+   * Lift the server's own sentence out of a `{"detail": "..."}` body, which is
+   * what both FastAPI and the gate answer with. That text is written for the
+   * person holding the phone, so it beats a status code on screen. Anything
+   * else yields nothing: a proxy's HTML error page is 200 characters of noise
+   * the user cannot act on, and `message` already carries the status.
+   */
+  private static serverDetail(body: string): string {
+    if (!body.startsWith('{')) {
+      return '';
+    }
+    try {
+      const detail = (JSON.parse(body) as DetailShape).detail;
+      if (typeof detail === 'string') {
+        return detail;
+      }
+    } catch (e) {
+      return '';
+    }
+    return '';
   }
 
   /** Cannot reach the server at all: worth retrying with backoff. */

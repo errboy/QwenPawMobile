@@ -75,8 +75,9 @@ body:
     attributes:
       label: 日志
       description: |
-        `devecocli log --device <序列号> --level W --bundle-name com.liaocaosix.qwenpawmobile --tail 200`
-        的输出。注意 user 版系统会裁掉 INFO 级日志。请删掉里面的真实 IP 与会话内容。
+        `devecocli log --device <序列号> --level W --bundle-name <bundleName> --tail 200` 的输出。
+        `<bundleName>` 用你 `AppScope/app.json5` 里那一个（改过应用标识还写默认值的话，一行日志都抓不到）。
+        注意 user 版系统会裁掉 INFO 级日志。请删掉里面的真实 IP 与会话内容。
       render: shell
   - type: textarea
     id: probes

@@ -34,6 +34,8 @@ export class AppStore implements PollTarget {
   /** False right after sign-out, even though the server address stays saved. */
   signedIn: boolean = false;
   offline: boolean = false;
+  /** The server refuses our token: only signing in again clears this. */
+  sessionExpired: boolean = false;
 
   // ---------- login configuration ----------
 
@@ -413,6 +415,7 @@ export class AppStore implements PollTarget {
     this.approvals = snapshot.approvals;
     // Two failed ticks in a row is a real outage, not one dropped packet.
     this.offline = snapshot.failures >= 2;
+    this.sessionExpired = snapshot.unauthorized;
     this.reconcileForeground();
     this.emit();
   }

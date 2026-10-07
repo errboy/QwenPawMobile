@@ -40,7 +40,7 @@ tools\qp-gate\start.bat config          :: 改配置：账号口令（可跳过�
 tools\qp-gate\start.bat password        :: 只换手机端登录的用户名与口令
 tools\qp-gate\start.bat show            :: 打印当前生效配置，连每一项的含义一起打
 tools\qp-gate\start.bat discover        :: 只看探测到的上游端口
-tools\qp-gate\start.bat check           :: 79 项自检，自带桩上游，不碰真实配置
+tools\qp-gate\start.bat check           :: 跑一遍自检，自带桩上游，不碰真实配置
 tools\qp-gate\start.bat firewall        :: 单独补一次入站放行（弹 UAC）
 tools\qp-gate\start.bat firewall-remove :: 删掉本工具加的防火墙规则（网关停了它还在）
 tools\qp-gate\start.bat help            :: 列出全部命令
@@ -51,7 +51,7 @@ python tools\qp-gate\qp_gate.py --init    :: 首启：设账号口令 + 放行�
 python tools\qp-gate\qp_gate.py --edit    :: 日常改配置（= start.bat config）
 python tools\qp-gate\qp_gate.py           :: 启动
 python tools\qp-gate\qp_gate.py --stop    :: 停（只停命令行里带 qp_gate 的那个进程）
-python tools\qp-gate\selftest.py          :: 79 项自检，自带桩上游，不碰真实配置
+python tools\qp-gate\selftest.py          :: 跑一遍自检，自带桩上游，不碰真实配置
 ```
 
 `stop` 去系统的连接表里找正在 `LISTENING` 配置端口的那个进程，**只停命令行里带着
@@ -115,11 +115,12 @@ tools\qp-gate\start.bat firewall-remove
   （请求体里 `reconnect: true`，见 [07](07-server-contract.md)）。
 - 断线重连按 2/4/8 秒退避，最多 3 次（`stream/RunController.ets:26,324`）。
 
-## 4. 审批：必须人在场
+## 4. 审批：卡片只在手机上由人点
 
-桌面端把工具执行挂起后，手机主页/聊天页会出现待审批卡片（`ui/chat/ApprovalCard.ets`），
-只有人点了"同意"才会 POST `/api/approval/approve`。代码里没有任何自动批准路径，
-也没有超时默认批准。**测试审批功能时必须有人在场点按钮**，这是协作约定，不是实现细节。
+桌面端把工具执行挂起后，手机主页/聊天页出现待审批卡片（`ui/chat/ApprovalCard.ets`），
+只有人点了"同意"才会 POST `/api/approval/approve`，批准范围取最小权限。
+"代码里不许留自动批准、测试时必须有人在场"这条为什么是硬约束，写在
+[SECURITY.md](../SECURITY.md) §2；agent 那侧的操作口径在 [11](11-agent-playbook.md)。
 
 ## 5. 附件与预览
 

@@ -37,6 +37,9 @@
 - [ ] `devecocli check lint` 干净
 - [ ] `devecocli build` 成功（无证书也应成功）
 - [ ] 改了 `qp_gate.py` → `python tools/qp-gate/selftest.py` 全过
+- [ ] 改了文档或 `Copy.fill*` 占位符 → `python tools/doc_line_check.py` 0 problems
+- [ ] 影响 UI → 至少一个真机 / 模拟器形态的实测说明（截图不入库，写在描述里）
+- [ ] 涉及审批 / 鉴权 / 绑定地址 → 已先开 issue 讨论
 - [ ] `CHANGELOG.md` 的 Unreleased 加了一行
 - [ ] 没有提交 `gate.json` / `external-signing-config.json` / 截图 / 构建产物
 - [ ] 带真实局域网 IP 或真实设备名的示例已泛化

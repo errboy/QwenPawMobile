@@ -31,6 +31,7 @@ struct HomePage {
   @State agents: AgentSummary[] = [];
   @State agentText: string = '';
   @State offline: boolean = false;
+  @State sessionExpired: boolean = false;
   @State pendingCount: number = 0;
   @State bgCount: number = 0;
   @State foregroundId: string = '';
@@ -121,6 +122,7 @@ struct HomePage {
     this.agents = app.agents;
     this.agentText = app.currentAgentLabel();
     this.offline = app.offline;
+    this.sessionExpired = app.sessionExpired;
     this.pendingCount = app.approvals.length;
     this.bgCount = app.backgroundRunning();
     this.foregroundId = app.foregroundId();
@@ -440,7 +442,17 @@ struct HomePage {
       }
       .width('100%')
 
-      if (this.offline) {
+      if (this.sessionExpired) {
+        // A refused token never heals on its own, so this line is the way out:
+        // tapping it runs the same sign-out the header button does.
+        Text(Copy.home_session_expired)
+          .fontSize(AppType.caption)
+          .fontColor(AppColor.error_text)
+          .width('100%')
+          .onClick((): void => {
+            this.logout();
+          })
+      } else if (this.offline) {
         Text(Copy.home_offline)
           .fontSize(AppType.caption)
           .fontColor(AppColor.warning_text)

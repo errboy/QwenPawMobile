@@ -17,7 +17,7 @@ devecocli check lint          # 规约
 devecocli build               # 干净克隆、无证书也应成功
 devecocli device list         # 序列号；多台设备时所有设备命令必须显式 --device
 devecocli run --device <序列号>
-python tools/qp-gate/selftest.py   # 改过 qp_gate.py 必跑，79 项
+python tools/qp-gate/selftest.py   # 改过 qp_gate.py 必跑
 ```
 
 给用户的命令请写成**可直接整行粘贴的绝对路径单行**，不要拆成"先 cd 再执行"的多段。
@@ -34,18 +34,10 @@ python tools/qp-gate/selftest.py   # 改过 qp_gate.py 必跑，79 项
 
 ## 4. 绝不提交
 
-| 路径 | 为什么 |
-| --- | --- |
-| `tools/qp-gate/gate.json` | 真实口令散列 + 令牌密钥（`gate.example.json` 才是模板） |
-| `external-signing-config.json` | keystore 路径与口令 |
-| `screenshots/` | 真机截图含真实会话内容与本机 IP |
-| `local.properties`、`oh_modules/`、`.hvigor/`、`**/build/` | 本机路径与产物 |
-| 带真实局域网 IP / 真实设备名的示例 | 隐私 |
-
-`build-profile.json5` 的 `signingConfigs.material` 必须保持**空串占位**；真实材料由
-`hvigorfile.ts` 的 `localSigning` 从 `external-signing-config.json` 折叠进来。
-`devecocli signature generate` 会把真实配置**写回** `build-profile.json5` ——
-签名之后要手工还原占位并把材料挪回外置文件，否则要么泄露口令，要么破坏干净克隆的构建。
+路径清单与自查命令只有一份，在 [SECURITY.md](SECURITY.md) §4。这一节只留一条只有 agent 会踩的：
+`devecocli signature generate` 会把真实签名配置**写回** `build-profile.json5` —— 签名之后要手工
+把 `signingConfigs.material` 还原成空串占位、把材料挪回 `external-signing-config.json`
+（`hvigorfile.ts` 的 `localSigning` 从那里折叠进来），否则要么泄露口令，要么破坏干净克隆的构建。
 
 ## 5. 代码约定
 

@@ -20,9 +20,10 @@ export class Copy {
   static readonly bad_credentials: string = '用户名或密码错误';
   static readonly account_locked: string = '尝试过于频繁，账号暂时锁定';
   /**
-   * Any other server verdict at sign-in. The tail is the diagnostic (an HTTP
-   * status and path, or the transport's own message), which the user can read
-   * out to whoever runs the PC; the wrapper keeps the line Chinese either way.
+   * Any other server verdict at sign-in. The tail is the diagnostic, which the
+   * user can read out to whoever runs the PC: the server's own sentence when it
+   * sent one, otherwise an HTTP status and path. The wrapper keeps the line
+   * Chinese either way.
    */
   static readonly login_failed: string = '登录失败：%s';
 
@@ -87,6 +88,12 @@ export class Copy {
   static readonly home_collapsed_hint: string = '已收起 %d 个会话';
   static readonly home_empty: string = '暂无会话。点下方“新建会话”，或在电脑端 Console 发起对话后同步到这里。';
   static readonly home_offline: string = '⚠ 无法连接服务器，列表可能已过期';
+  /**
+   * Shown instead of `home_offline` when the server answers but refuses the
+   * token. Naming the fix matters: retrying a 401 never succeeds, so the only
+   * way back is signing in again — which is what tapping this line does.
+   */
+  static readonly home_session_expired: string = '⚠ 登录已失效，点按重新登录';
   static readonly home_refresh: string = '刷新会话列表';
   static readonly home_group_console: string = '控制台会话';
   /** Start a window from the phone; the server still mints its id. */

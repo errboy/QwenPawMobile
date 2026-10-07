@@ -58,23 +58,21 @@ fix(tools): make qp-gate actually start on a Chinese Windows console
 git status --short
 ```
 
-确认没有 `gate.json`、`external-signing-config.json`、`screenshots/`、
-`local.properties`、`oh_modules/`、`entry/build/`。
+对照 [SECURITY.md](SECURITY.md) §4 那份"绝不进仓库"的清单确认没有它们（`gate.json`、
+`external-signing-config.json`、`screenshots/`、构建产物与本机路径）。
 
 ## 5. PR 检查清单
 
-- [ ] `devecocli check arkts --fix` 干净
-- [ ] `devecocli check lint` 干净
-- [ ] `devecocli build` 成功（无证书也应成功，产物 unsigned）
-- [ ] 改了 `qp_gate.py` → `python tools/qp-gate/selftest.py` 全过
-- [ ] `python tools/doc_line_check.py` 0 problems（它管三件事：文档里的代码行引用、markdown
-      相对链接、`Copy.fill*` 的占位符数量。后两样 ArkTS 与 lint 都不报，只在屏幕上说谎）
-- [ ] 影响 UI → 至少一个真机/模拟器形态的实测说明（截图不入库，写在描述里）
-- [ ] 影响服务端交互 → 说明是否连真实端验过
-- [ ] 涉及审批/鉴权/绑定地址 → 先开 issue 讨论，别直接提交
-- [ ] `CHANGELOG.md` 的 Unreleased 加一行
+清单就是 PR 正文里那张表，逐条打勾即可（模板在 `.github/PULL_REQUEST_TEMPLATE.md`，
+不在这里重抄一遍 —— 抄两份迟早对不上）。两句解释：
+
+- `devecocli build` **没有证书也应该成功**，产物是 unsigned hap（见
+  [docs/02](docs/02-build-and-sign.md)），所以"构建过了"不代表你能装机。
+- `python tools/doc_line_check.py` 管三件事：文档里的代码行引用、markdown 相对链接、
+  `Copy.fill*` 的占位符数量。后两样 ArkTS 与 lint 都不报，**只在屏幕上说谎**。
 
 大 PR 拆小；一个 PR 只做一件事。行为变更比代码变更更需要证据。
+打 tag、发 Release、往 `main` 推东西都由维护者做，贡献者把 PR 做好即可。
 
 ## 6. 沟通
 

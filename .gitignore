@@ -32,3 +32,9 @@
 # release split that copies the directory wholesale has something stopping it.
 /_legacy_reference/
 AppScope/backup_*_icons/
+
+# Same case for the maintainer-only ledger and changelog detail: tracked here, kept
+# out of the export by name (docs/12 §3), and named here so a wholesale directory
+# copy has something stopping it too. A NEW file under it needs `git add -f` in this
+# tree; editing the tracked ones does not.
+/maintainer/

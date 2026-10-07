@@ -147,6 +147,12 @@ struct Index {
     if (failure.kind === FailureKind.Locked) {
       return Copy.account_locked;
     }
+    // The gate writes its refusal reasons in Chinese for exactly this screen —
+    // "该地址不在允许网段内" tells the user to fix the config, while
+    // "HTTP 403 /auth/status" only tells them something failed.
+    if (failure.detail !== '') {
+      return Copy.fill(Copy.login_failed, failure.detail);
+    }
     return Copy.fill(Copy.login_failed, failure.message);
   }
 

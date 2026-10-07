@@ -38,12 +38,13 @@ POST /api/auth/login → { "token": "<bearer>" }
 后续请求头 Authorization: Bearer <token>
 ```
 
-`enabled=false` 时客户端**跳过登录直接存空令牌**（`state/AppStore.ets:264-272`）——
+`enabled=false` 时客户端**跳过登录直接存空令牌**（`state/AppStore.ets:274-277`）——
 这也是 qp-gate 必须本地应答 `enabled: true` 的原因，否则手机在网关后面根本不会走登录。
 
 状态码语义（`core/Failure.ets`）：401 Unauthorized、403 Forbidden、404 NotFound、
-409 Conflict、423 Locked。**401 不会触发自动重登**，只把错误归成 Unauthorized 报给用户
-（`core/Failure.ets:44`）。这就是 qp-gate 的令牌默认永久不过期的原因。
+409 Conflict、423 Locked。**401 不会触发自动重登**，只把错误归成 Unauthorized（`core/Failure.ets:49`）；
+主页据此把横幅换成红色那句「登录已失效，点按重新登录」，点它走的是「退出」那条路，所以修好令牌的
+动作是**人点一次**，不是手机自己重试。这就是 qp-gate 的令牌默认永久不过期的原因。
 
 ## 3. 发送请求体
 
@@ -100,9 +101,13 @@ workspace manifest + 渠道算出来的（`runtime/builder.py` 调
 
 ## 5. 轮询
 
-`polling/GlobalPoller.ets:13` 定 `POLL_INTERVAL_MS = 10000`，全 App 一个定时器：
+`polling/GlobalPoller.ets:15` 定 `POLL_INTERVAL_MS = 10000`，全 App 一个定时器：
 每 tick 取一次 `/api/chats` + `/api/approval/list`，把快照分发给注册过的 store。
 任何 `ChatStore` 自己发 `/api/chats` 都是 bug。
+
+快照带两支故障信号，分开是因为**处置不同**：`failures`（连续失败次数，≥2 才上屏）说的是连不上，
+下拉或等下一 tick 会自己好；`unauthorized` 说的是这一 tick 被 401 拒了，重试永远不好，所以主页给
+它单独一条红色横幅、点一下落回登录页。被接受的那一 tick 两个字段一起归零，横幅不需要谁去清。
 
 ## 6. 断线重连
 

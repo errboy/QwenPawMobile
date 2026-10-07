@@ -20,6 +20,12 @@ export class PollSnapshot {
   approvals: ApprovalInfo[] = [];
   /** Consecutive failed ticks; the UI starts showing an offline hint at 2. */
   failures: number = 0;
+  /**
+   * The last tick was refused over the token, not over the network. Retrying a
+   * 401 forever looks identical to an outage on screen, so the home page needs
+   * to say "sign in again" instead of "cannot connect".
+   */
+  unauthorized: boolean = false;
 }
 
 export interface PollTarget {
@@ -92,10 +98,12 @@ export class GlobalPoller {
       next.approvals = await this.approvalApi.list();
       next.failures = 0;
     } catch (e) {
+      const failure = Failure.from(e);
       // The hint the user gets is a generic "cannot reach the server". A server
       // that answers 200 with something that is not a list is the opposite case,
       // and this line is the only place that tells them apart.
-      Log.warn(`轮询失败：${Failure.from(e).message}`);
+      Log.warn(`轮询失败：${failure.message}`);
+      next.unauthorized = failure.isUnauthorized();
       // Keep the last good snapshot: a transient blip must not blank the list.
       next.chats = this.snapshotValue.chats;
       next.approvals = this.snapshotValue.approvals;
