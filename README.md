@@ -21,6 +21,9 @@ QwenPaw 桌面端的鸿蒙（HarmonyOS NEXT）遥控器：在局域网里找到�
 - **多种设备**：兼容手机、横屏、折叠内外屏、阔折叠、三折、平板等不同设备（鸿蒙（HarmonyOS NEXT）版）。
 - **`tools/qp-gate`**：一个单文件 Python 小代理，桌面端和app轻松连接的桥梁。
 
+上面最后一条是**用它的前提**：手机要连上桌面端，电脑上得先把 `tools/qp-gate` 跑着 ——
+起法、手机要填的地址与端口、不用时怎么停，都在下面「要用它，电脑上得先跑起 `tools/qp-gate`」一节。
+
 手机上的一切都是**只读或只写本地**：不改桌面端的配置、不申请存储权限、聊天历史永远在电脑那一侧。
 这些边界逐条写在 [SECURITY.md](SECURITY.md) 与 [docs/04](docs/04-desktop-cooperation.md)。
 
