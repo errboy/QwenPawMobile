@@ -60,15 +60,17 @@ export class Copy {
   /**
    * Three short lines under the field. The first names the default the field was
    * prefilled with, which is not the same fact as the number currently typed
-   * there — an older install can hold anything. The next two give both ports a
-   * label, so nobody has to remember which side of the gate a number belongs to:
-   * 61700 is qp-gate's own listen port (`tools/qp-gate/gate.example.json`), 8088
-   * is the desktop console's. A sweep only ever probes the one number typed above.
+   * there — an older install can hold anything. The next two are a two-row port
+   * table, one row per side of the gate: 61700 is qp-gate's own listen port
+   * (`tools/qp-gate/gate.example.json`), 8088 is the desktop console's. A sweep
+   * only ever probes the one number typed above.
+   * `名称：数字` and nothing more — the longest real phone width this has to fit
+   * in one row is the xs bucket's ~576px, measured on the xs probe.
    * docs/11 quotes all three lines verbatim as node anchors.
    */
   static readonly config_port_default: string = '默认 61700';
-  static readonly config_port_gate: string = '守门程序 qp-gate 默认端口：61700';
-  static readonly config_port_desktop: string = 'QwenPaw 默认端口：8088';
+  static readonly config_port_gate: string = 'qp-gate：61700';
+  static readonly config_port_desktop: string = 'QwenPaw：8088';
   static readonly config_credential_label: string = '登录凭据';
   static readonly config_credential_hint: string = '保存在本机，登录页直接使用';
   static readonly config_local_address: string = '手机本机地址: %s';
