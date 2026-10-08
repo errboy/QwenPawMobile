@@ -58,14 +58,17 @@ export class Copy {
   static readonly config_delete: string = '删除';
   static readonly config_port_label: string = '端口';
   /**
-   * Two short lines under the field, and the field keeps exactly one default:
-   * 61700, qp-gate's own listen port (`tools/qp-gate/gate.example.json`). A sweep
-   * only ever probes the one number typed there, so the desktop's 8088 is not
-   * shown on this screen at all — docs/10 and docs/09 carry that case.
-   * docs/11 quotes both lines verbatim as node anchors.
+   * Three short lines under the field. The first names the default the field was
+   * prefilled with, which is not the same fact as the number currently typed
+   * there — an older install can hold anything. The next two give both ports a
+   * label, so nobody has to remember which side of the gate a number belongs to:
+   * 61700 is qp-gate's own listen port (`tools/qp-gate/gate.example.json`), 8088
+   * is the desktop console's. A sweep only ever probes the one number typed above.
+   * docs/11 quotes all three lines verbatim as node anchors.
    */
-  static readonly config_port_default: string = '默认端口 61700';
-  static readonly config_port_gate: string = '这是守门程序 qp-gate 的默认端口';
+  static readonly config_port_default: string = '默认 61700';
+  static readonly config_port_gate: string = '守门程序 qp-gate 默认端口：61700';
+  static readonly config_port_desktop: string = 'QwenPaw 默认端口：8088';
   static readonly config_credential_label: string = '登录凭据';
   static readonly config_credential_hint: string = '保存在本机，登录页直接使用';
   static readonly config_local_address: string = '手机本机地址: %s';

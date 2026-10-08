@@ -233,8 +233,8 @@ struct SettingsPage {
           }
           .width('100%')
           /**
-           * Both caption lines get the page width. Beside the 120-wide field the
-           * hint had only ~64vp left on a narrow phone, which wrapped it to a
+           * All three caption lines get the page width. Beside the 120-wide field
+           * the hint had only ~64vp left on a narrow phone, which wrapped it to a
            * ten-line column; measured on the xs bucket, so keep them out of the Row.
            */
           Text(Copy.config_port_default)
@@ -242,6 +242,10 @@ struct SettingsPage {
             .fontColor(AppColor.text_tertiary)
             .width('100%')
           Text(Copy.config_port_gate)
+            .fontSize(AppType.caption)
+            .fontColor(AppColor.text_tertiary)
+            .width('100%')
+          Text(Copy.config_port_desktop)
             .fontSize(AppType.caption)
             .fontColor(AppColor.text_tertiary)
             .width('100%')
