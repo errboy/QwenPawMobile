@@ -237,11 +237,11 @@ struct SettingsPage {
            * hint had only ~64vp left on a narrow phone, which wrapped it to a
            * ten-line column; measured on the xs bucket, so keep them out of the Row.
            */
-          Text(Copy.config_port_hint)
+          Text(Copy.config_port_default)
             .fontSize(AppType.caption)
             .fontColor(AppColor.text_tertiary)
             .width('100%')
-          Text(Copy.config_port_direct)
+          Text(Copy.config_port_gate)
             .fontSize(AppType.caption)
             .fontColor(AppColor.text_tertiary)
             .width('100%')

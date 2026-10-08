@@ -57,14 +57,15 @@ export class Copy {
   static readonly config_add: string = '添加';
   static readonly config_delete: string = '删除';
   static readonly config_port_label: string = '端口';
-  static readonly config_port_hint: string = '扫描端口，默认 61700（守门程序 qp-gate 的端口）';
   /**
-   * One field, one value: this line names the only case that replaces the
-   * default. 61700 is the gate's own default (`tools/qp-gate/gate.example.json`),
-   * 8088 is the desktop console's, and a sweep only ever probes the one number
-   * typed here. docs/11 quotes both lines verbatim as node anchors.
+   * Two short lines under the field, and the field keeps exactly one default:
+   * 61700, qp-gate's own listen port (`tools/qp-gate/gate.example.json`). A sweep
+   * only ever probes the one number typed there, so the desktop's 8088 is not
+   * shown on this screen at all — docs/10 and docs/09 carry that case.
+   * docs/11 quotes both lines verbatim as node anchors.
    */
-  static readonly config_port_direct: string = '只有不经过守门程序、直连桌面端时才改成 8088';
+  static readonly config_port_default: string = '默认端口 61700';
+  static readonly config_port_gate: string = '这是守门程序 qp-gate 的默认端口';
   static readonly config_credential_label: string = '登录凭据';
   static readonly config_credential_hint: string = '保存在本机，登录页直接使用';
   static readonly config_local_address: string = '手机本机地址: %s';
