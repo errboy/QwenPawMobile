@@ -53,7 +53,99 @@ def check(name: str, ok: bool, detail: str = "") -> None:
     line = f"{'PASS' if ok else 'FAIL'}  {name}"
     if detail and not ok:
         line += f"  -- {detail}"
-    print(line, flush=True)
+    # 走 RAW_OUT：静音小节里被收走的只有被测程序打的话，断言永远上屏。
+    print(line, file=RAW_OUT, flush=True)
+
+
+# ---------------------------------------------------------------- 输出排版
+#
+# 正文此前是 79 行 PASS 夹着 50 行守门代理自己的日志。那些日志正是被测系统在被请求时
+# 打的东西，但逐条读 PASS 的人只能把它们当噪声跳过，一行都读不进去。现在按小节分组，
+# 日志先按小节攒起来：全过时不出现，某一节有 FAIL 时在那一节末尾整段回显——那种时候
+# 它是定位线索，不是噪声。
+
+SECTIONS: list = []
+LOG_PREFIX = "[qp-gate "
+RAW_OUT = sys.stdout
+
+
+class GateLogTee(io.TextIOBase):
+    """把被测程序自己打的行收进当前小节，PASS/FAIL 与小节标题照常上屏。
+
+    默认只截 [qp-gate ...] 这一种；小节标了 mute=True 时该节内一切 print 都收走
+    （--edit 那几节里，被 fake 掉的输入让六行提问原样刷出来，把断言埋了）。
+    自检自己打的话走 RAW_OUT，不经过本类，所以静音绝不会把 PASS/FAIL 一起吞掉。
+
+    截的是 stdout 而不是把 log() 换成替身：断言里用 redirect_stdout 换掉 sys.stdout
+    时本类根本不在链上，"日志必须点出被拒地址""stdout 关掉时 log 不抛"那两条测的
+    仍是模块里原样的 log()。
+    """
+
+    def __init__(self, out) -> None:
+        self._out = out
+        self._sink = None
+        self._mute = False
+        self._pending = False
+        self._lock = threading.Lock()
+
+    def writable(self) -> bool:
+        return True
+
+    def set_sink(self, sink) -> None:
+        self._sink = sink
+
+    def set_mute(self, on: bool) -> None:
+        self._mute = on
+
+    def write(self, text: str) -> int:
+        with self._lock:
+            if self._pending and text == "\n":
+                self._pending = False
+                return len(text)
+            self._pending = False
+            captured = self._sink is not None and (
+                self._mute or text.startswith(LOG_PREFIX))
+            if not captured:
+                try:
+                    return self._out.write(text)
+                except (OSError, ValueError, RuntimeError):
+                    return len(text)
+            self._sink.append(text[:-1] if text.endswith("\n") else text)
+            self._pending = not text.endswith("\n")
+            return len(text)
+
+    def flush(self) -> None:
+        try:
+            self._out.flush()
+        except (OSError, ValueError, RuntimeError):
+            pass
+
+    def close(self) -> None:
+        self.flush()
+
+    def __getattr__(self, name):
+        if name.startswith("_"):
+            raise AttributeError(name)
+        return getattr(self._out, name)
+
+
+TEE = GateLogTee(RAW_OUT)
+sys.stdout = TEE
+
+
+@contextlib.contextmanager
+def section(title: str, mute: bool = False):
+    logs: list = []
+    start = len(RESULTS)
+    print(f"\n── {title} ──", file=RAW_OUT, flush=True)
+    TEE.set_sink(logs)
+    TEE.set_mute(mute)
+    try:
+        yield
+    finally:
+        TEE.set_sink(None)
+        TEE.set_mute(False)
+        SECTIONS.append((title, start, len(RESULTS), logs))
 
 
 # ---------------------------------------------------------------- 桩上游
@@ -618,6 +710,16 @@ def config_suite(tmp: Path) -> None:
         answers(["-"])
         check("ask_cidrs 输入 - 仍然表示不限网段",
               qp_gate.ask_cidrs(["10.0.0.0/24"]) == [])
+        answers(["192.168.9.0/24,10.7.7.0/24", "10.8.0.0/16"])
+        check("ask_cidrs 用逗号隔开多个网段（提示写的是空格）会重问，第二次填对就采纳",
+              qp_gate.ask_cidrs(["10.0.0.0/24"]) == ["10.8.0.0/16"])
+        answers(["192.168.13.0/33", "0.0.0.0/x", "abc"])
+        try:
+            qp_gate.ask_cidrs(["10.0.0.0/24"])
+            refused = False
+        except SystemExit:
+            refused = True
+        check("ask_cidrs 连着填错到上限就不出结果（调用方因此一个字都不写）", refused)
     finally:
         builtins.input = real_input
 
@@ -666,6 +768,22 @@ def config_suite(tmp: Path) -> None:
         after = json.loads(path.read_text(encoding="utf-8"))
         check("--edit 能把网段清空成不限，同时保留没问的字段",
               after["allow_cidrs"] == [] and after["listen_port"] == 61700, str(after))
+
+        answers(["n", "", "", "192.168.9.0/24,10.7.7.0/24", "10.7.7.0/24"])
+        qp_gate.edit_config(path)
+        after = json.loads(path.read_text(encoding="utf-8"))
+        check("--edit 里用逗号隔开网段不会把名单悄悄清空：重问一次，落盘的是填对的那条",
+              after["allow_cidrs"] == ["10.7.7.0/24"], str(after))
+
+        untouched = path.read_text(encoding="utf-8")
+        answers(["n", "", "", "abc", "def", "ghi"])
+        try:
+            qp_gate.edit_config(path)
+            saved_nothing = False
+        except SystemExit:
+            saved_nothing = path.read_text(encoding="utf-8") == untouched
+        check("--edit 连着填错到上限就整个不写（磁盘上还是问之前的那份）",
+              saved_nothing)
     finally:
         builtins.input = real_input
         qp_gate.probe_upstream = saved_probe
@@ -673,6 +791,46 @@ def config_suite(tmp: Path) -> None:
         qp_gate.ensure_firewall_rule = saved_firewall
         qp_gate.show_config = saved_show
         qp_gate.DEFAULT_CONFIG = saved_default
+
+    # start.bat 的正文只能是 ASCII（cmd 会把非 ASCII 字节解析坏），所以失败收尾和那张
+    # 命令表都不写在批处理里，而是由 `--explain <分支>` 打出来。下面钉的是这两处的接缝。
+    bat = (Path(__file__).resolve().parent / "start.bat").read_text(
+        encoding="ascii").replace("\r\n", "\n")
+    branches = [chunk.split()[0] for chunk in bat.split("--explain=")[1:]]
+    said = []
+    for kind in branches:
+        buf = io.StringIO()
+        try:
+            with contextlib.redirect_stdout(buf):
+                qp_gate.explain(kind)
+        except SystemExit:
+            continue
+        said.append((kind, buf.getvalue()))
+    check("start.bat 用到的每个 --explain 分支都打得出中文收尾"
+          "（改了分支名忘了同步这边，用户收到的就是什么都没有的空收尾）",
+          len(said) == len(set(branches)) > 1
+          and all(any("\u4e00" <= c <= "\u9fff" for c in text) for _, text in said),
+          str(branches))
+
+    quiet = []
+    for label in ("failed", "editfailed", "stopfailed", "noconfig", "usage"):
+        body = bat.split(f"\n:{label}\n", 1)[1].split("\n:", 1)[0]
+        quiet.append("--explain=" in body and "echo " not in body)
+    check("四处失败收尾和那张命令表自己不再打英文正文，话全交给 qp_gate.py",
+          all(quiet), str(quiet))
+
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        code = qp_gate.main(["--explain=failed", "--config", str(Path(tmp) / "none.json")])
+    check("--explain 在读不到配置的时候照样说话（配置坏了正是要用收尾的那一次）",
+          code == 0 and "网关没能起来" in buf.getvalue())
+
+    try:
+        qp_gate.explain("no-such-branch")
+        loud = False
+    except SystemExit:
+        loud = True
+    check("--explain 收到不认识的分支名就报错，不静默地什么都不打", loud)
 
 
 def firewall_suite() -> None:
@@ -795,8 +953,8 @@ def main() -> int:
 
     # 隔离到临时工作目录：否则上游发现会去读真实的 ~/.qwenpaw/config.json，
     # 一个本该打桩上游的请求就会被静默转给用户真跑着的桌面端。
-    os.environ["QWENPAW_WORKING_DIR"] = tempfile.mkdtemp(prefix="qp-gate-selftest-")
-
+    # 两个目录都走 TemporaryDirectory：这里此前用的是 mkdtemp，每跑一次自检就在 %TEMP%
+    # 留下一个 qp-gate-selftest-* 没人收（这台机器上数出来 34 个）。
     async def serve_all(stub_ready: concurrent.futures.Future,
                         gate_ready: concurrent.futures.Future):
         stub = await asyncio.start_server(stub_serve, "127.0.0.1", 0)
@@ -810,7 +968,9 @@ def main() -> int:
         async with stub, server:
             await asyncio.sleep(120)
 
-    with tempfile.TemporaryDirectory() as tmpdir:
+    with tempfile.TemporaryDirectory() as tmpdir, \
+            tempfile.TemporaryDirectory(prefix="qp-gate-selftest-") as workdir:
+        os.environ["QWENPAW_WORKING_DIR"] = workdir
         holder["tmp"] = tmpdir
         stub_fut = concurrent.futures.Future()
         gate_fut = concurrent.futures.Future()
@@ -819,23 +979,40 @@ def main() -> int:
         thread.start()
         stub_port = stub_fut.result(timeout=10)
         gate_port = gate_fut.result(timeout=10)
-        print(f"stub={stub_port} gate={gate_port}")
-        suite(gate_port)
-        cidr_suite(Path(tmpdir) / "cidr.json", stub_port)
-        upstream_missing_suite(Path(tmpdir) / "dead.json", stub_port)
-        discovery_suite(stub_port)
-        external_output_suite()
-        address_suite(Path(tmpdir))
-        config_suite(Path(tmpdir))
-        firewall_suite()
-        stop_suite(Path(tmpdir))
+        print(f"桩上游 :{stub_port}   守门代理 :{gate_port}")
+        with section("主流程：接管鉴权面 / 令牌 / 限流 / 转发 / SSE / 大 body / 畸形报文"):
+            suite(gate_port)
+        with section("放行网段"):
+            cidr_suite(Path(tmpdir) / "cidr.json", stub_port)
+        with section("上游缺席"):
+            upstream_missing_suite(Path(tmpdir) / "dead.json", stub_port)
+        with section("上游自动发现"):
+            discovery_suite(stub_port)
+        with section("外部命令输出解码"):
+            external_output_suite()
+        with section("本机地址与横幅"):
+            address_suite(Path(tmpdir))
+        with section("配置读写 --edit", mute=True):
+            config_suite(Path(tmpdir))
+        with section("防火墙规则"):
+            firewall_suite()
+        with section("--stop 的认领"):
+            stop_suite(Path(tmpdir))
 
     total = len(RESULTS)
     passed = sum(1 for _n, ok in RESULTS if ok)
     print(f"\n{passed}/{total} PASS")
-    for name, ok in RESULTS:
-        if not ok:
-            print(f"  FAIL {name}")
+    for title, start, end, logs in SECTIONS:
+        failed = [name for name, ok in RESULTS[start:end] if not ok]
+        if not failed:
+            continue
+        print(f"\n「{title}」失败 {len(failed)} 条:")
+        for name in failed:
+            print(f"  {name}")
+        if logs:
+            print("  这一节守门代理自己打过的行:")
+            for line in logs:
+                print(f"    {line}")
     return 0 if passed == total else 1
 
 

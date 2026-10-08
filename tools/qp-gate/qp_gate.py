@@ -28,9 +28,11 @@ import argparse
 import asyncio
 import base64
 import binascii
+import contextlib
 import getpass
 import hashlib
 import hmac
+import io
 import ipaddress
 import json
 import os
@@ -41,6 +43,7 @@ import socket
 import subprocess
 import sys
 import time
+import unicodedata
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -84,9 +87,43 @@ def redact(path: str) -> str:
     return path.split("?", 1)[0]
 
 
+START_BAT = Path(__file__).resolve().with_name("start.bat")
+# start.bat 认的那几个词：它自己会找解释器，所以这句提示比"解释器 + 脚本 + 参数"短一半。
+# --init 不进表：`start.bat` 不带参数确实会引导 --init，但它紧接着就把网关起来监听，
+# 而打出"先跑 --init"这句时用户可能正指着临时文件演练，那条命令不该顺手开一个监听面。
+# discover / show 只读一次就退出，不开监听面，所以进表——失败收尾里那两条"重试"命令
+# 要跟 --show 正文里的两条长得一样。
+BAT_WORDS = {"--edit": "config", "--stop": "stop", "--set-password": "password",
+             "--discover": "discover", "--show": "show"}
+
+
 def hint(*args: str) -> str:
-    """一条能原样粘贴的命令。让用户先 cd 到本目录再敲相对路径，等于没说。"""
+    """一条能原样粘贴的命令。让用户先 cd 到本目录再敲相对路径，等于没说。
+
+    Windows 上 start.bat 就在脚本旁边时用它的短词形式。认不出的参数（带 --config
+    那种、--init）和非 Windows 都退回解释器形式——拼一条跑不通的命令比长一行更糟。
+    """
+    if len(args) == 1 and os.name == "nt":
+        word = BAT_WORDS.get(args[0])
+        if word and START_BAT.exists():
+            return f'"{START_BAT}" {word}'
     return " ".join([f'"{sys.executable}"', f'"{Path(__file__).resolve()}"', *args])
+
+
+NOTE_COLUMN = 26  # --show 行尾批注的 "#" 从值的起点算排在第几列
+# 网段填错重问几次。设上限是因为无上限的循环在没有真人回显的地方（管道、脚本）
+# 就是一条永不返回的命令；到上限就整个不写，配置保持原样。
+CIDR_ATTEMPTS = 3
+
+
+def display_cols(text: str) -> int:
+    """这段文字在终端里占几列，全角字符按两列算。
+
+    --show 的每一项都带行尾批注，用 len() 对齐会让中英混排的行错开半格："已设置"
+    是 3 个字符、6 列。
+    """
+    return sum(2 if unicodedata.east_asian_width(c) in ("W", "F") else 1
+               for c in text)
 
 
 def run_captured(argv: list, timeout: float) -> subprocess.CompletedProcess:
@@ -1068,6 +1105,10 @@ def ask_cidrs(current: list | None = None) -> list:
 
     current 非空时拿它当默认值：改配置时回车意味着"保持原样"，而不是把这一刻
     探测到的网卡再写一遍——插了 VPN 的那一次就会把用户原来的网段悄悄换掉。
+
+    填错的网段不"忽略掉继续"：多个网段用逗号隔开（提示写的是空格）时整串是一条非法
+    网段，旧写法把它忽略掉，名单就塌成空 = 不限网段 = 任何地址都可尝试登录，而退出码
+    仍是 0、正文照常打完。所以这里重问这一题；连着都填不对就整个不写。
     """
     addresses = local_ipv4s()
     detected = " ".join(suggest_cidr(a) for a in addresses)
@@ -1076,17 +1117,26 @@ def ask_cidrs(current: list | None = None) -> list:
         print("本机局域网地址: " + ", ".join(addresses))
     elif not current:
         print("没探测到本机局域网地址：这台机器现在没有可对外的 IPv4。")
-    answer = input(f"允许连入的网段 [{default or '空 = 不限网段'}]"
-                   "（回车采用；多个用空格隔开；输入 - 表示不限网段）: ").strip()
-    chosen = [] if answer == "-" else (answer or default).split()
-    kept = []
-    for cidr in chosen:
-        try:
-            ipaddress.ip_network(cidr, strict=False)
-        except ValueError:
-            print(f"  忽略非法网段: {cidr}")
-            continue
-        kept.append(cidr)
+    prompt = (f"允许连入的网段 [{default or '空 = 不限网段'}]"
+              "（回车采用；多个用空格隔开；输入 - 表示不限网段）: ")
+    for attempt in range(1, CIDR_ATTEMPTS + 1):
+        answer = input(prompt).strip()
+        chosen = [] if answer == "-" else (answer or default).split()
+        kept, bad = [], []
+        for cidr in chosen:
+            try:
+                ipaddress.ip_network(cidr, strict=False)
+            except ValueError:
+                bad.append(cidr)
+            else:
+                kept.append(cidr)
+        if not bad:
+            break
+        if attempt == CIDR_ATTEMPTS:
+            raise SystemExit(f"{'、'.join(bad)} 不是网段，连着 {CIDR_ATTEMPTS} 次都没填对："
+                             "什么都不写，配置保持原样"
+                             "（形如 192.168.9.0/24；回车保持当前值；- 表示不限网段）")
+        print(f"  {'、'.join(bad)} 不是网段，这一条不算——重新问一遍。")
     if not kept:
         print("  不限网段：任何能路由到本机的地址都可尝试登录（口令限流仍在）。"
               "起服务时会再提醒一次。")
@@ -1220,35 +1270,136 @@ def set_password(config: Config, interactive: bool) -> None:
 
 
 def show_config(config: Config) -> None:
-    """把生效配置连解释一起打出来。
+    """把生效配置连解释一起打出来：一项一行，按用途分四组。
 
     JSON 写不了注释，而这些字段的含义此前只活在 README 里：upstream_port=0 是自动
     发现、username 是手机端登录名而不是桌面端账号、换 token_secret 会作废已签发的令牌。
-    口令与密钥只报"有没有设置"——这份输出是会被原样贴进群聊和工单里的东西。
+    键名照 gate.json 原样写，方便对着文件逐条核。口令与密钥只报"有没有设置"——这份
+    输出是会被原样贴进群聊和工单里的东西。
+    两条命令以前把说明和绝对路径挤在同一行、单行二百多字符，终端一折就分不清哪段是
+    话哪段是命令；现在话在上、命令单独成行，整行可以直接粘。
     """
-    print(f"配置文件: {config.path}")
-    print(f"  listen_host={config.listen_host}  listen_port={config.listen_port}")
+    def row(key: str, value: str, note: str = "") -> None:
+        line = f"  {key:<20}{value}"
+        if note:
+            line += " " * max(3, NOTE_COLUMN - display_cols(value)) + f"# {note}"
+        print(line)
+
+    def note_only(text: str) -> None:
+        print(f"  {'':20}{text}")
+
+    print(f"配置文件  {config.path}")
+
+    print("\n[手机连这一侧]")
+    row("listen_host", config.listen_host)
+    row("listen_port", str(config.listen_port))
     for line in phone_urls(config):
-        print(f"    {line}")
-    print(f"  upstream_host={config.upstream_host}  upstream_port={config.upstream_port}   "
-          + ("# 0 = 自动发现桌面端正在听的回环端口" if config.upstream_port == 0
-             else "# 固定端口，不再自动发现"))
-    port = Upstream(config).resolve()
-    print("    现在探测到的上游: "
-          + (f"http://{config.upstream_host}:{port}" if port else "无（桌面端没在跑？）"))
-    print(f"  username={config.username or '（未设置）'}   # 手机端登录名，不是桌面端账号")
-    print(f"  credential={'已设置' if config.credential else '未设置'}"
-          "   # PBKDF2 派生值，明文口令不落盘")
-    print(f"  token_secret={'已设置' if config.token_secret else '未设置'}"
-          "   # 换掉它 = 已签发的令牌全部作废，手机要重新登录")
-    print(f"  token_ttl_seconds={config.token_ttl_seconds}   # 0 = 永久")
-    print(f"  allow_cidrs={', '.join(config.allow_cidrs) or '（空）'}"
-          "   # 空 = 任何能路由到本机的地址都可尝试登录")
-    print(f"  max_connections={config.max_connections}   "
-          f"login_max_failures={config.login_max_failures}/{config.login_window_seconds}s")
-    print("  改口令/端口/网段: " + hint("--edit") + "（每一项以当前值为默认，一路回车什么都不改）")
-    print("  停止: " + hint("--stop") + "（关掉窗口不等于停了进程，这条管的就是没窗口那一个）")
+        note_only(line)
+
+    print("\n[桌面端那一侧]")
+    row("upstream_host", config.upstream_host)
+    row("upstream_port", str(config.upstream_port),
+        "0 = 自动发现桌面端正在听的回环端口" if config.upstream_port == 0
+        else "固定端口，不再自动发现")
+    # 发现过程自己会打一行"上游已定位"。它是网关运行时的日志，不该混进这份正文：
+    # 正文里同一件事只有一行，就是下面那条探测结果。
+    with contextlib.redirect_stdout(io.StringIO()):
+        port = Upstream(config).resolve()
+    note_only("探测到的上游: "
+              + (f"http://{config.upstream_host}:{port}" if port
+                 else "无（桌面端没在跑？）"))
+
+    print("\n[登录与令牌]")
+    row("username", config.username or "（未设置）", "手机端登录名，不是桌面端账号")
+    row("credential", "已设置" if config.credential else "未设置",
+        "PBKDF2 派生值，明文口令不落盘")
+    row("token_secret", "已设置" if config.token_secret else "未设置",
+        "换掉它 = 已签发的令牌全部作废，手机要重新登录")
+    row("token_ttl_seconds", str(config.token_ttl_seconds), "0 = 永久")
+
+    print("\n[准入与限额]")
+    row("allow_cidrs", ", ".join(config.allow_cidrs) or "（空）",
+        "空 = 任何能路由到本机的地址都可尝试登录")
+    row("max_connections", str(config.max_connections))
+    row("login_max_failures",
+        f"{config.login_max_failures}/{config.login_window_seconds}s")
+
+    print("\n[常用命令]")
+    print("  改口令、端口、放行网段（每一项以当前值为默认，一路回车什么都不改）：")
+    print(f"    {hint('--edit')}")
+    print("  停掉正在监听的那一个（关掉窗口不等于停了进程，这条管的就是没窗口那一个）：")
+    print(f"    {hint('--stop')}")
     print("  其余高级项手改上面的 JSON 文件，改完再跑一次 --show 复核")
+
+
+def explain(kind: str) -> None:
+    """start.bat 走到失败分支、或要打印那张命令表时说的中文。
+
+    这些话没法写在 start.bat 里：批处理正文只能是 ASCII（cmd 会把非 ASCII 字节解析坏），
+    而失败又恰好发生在 Python 已经退出、bat 接手收尾的那一刻。所以 bat 只留一行
+    `--explain <哪个分支>`，把该说的话交还给这个文件——和 --show 的正文同一个口径：
+    说明在上、命令单独成行，命令是可以整行复制的绝对路径。那张命令表（usage）也在这一份里，
+    理由是同一条：表里的说明文字全是要上屏的中文。
+    """
+    texts = {
+        "failed": [
+            "[网关没能起来] 它没有开始监听。常见原因四条：",
+            "  - 端口已经被占住：另一个网关还在跑，同一个端口只能有一个",
+            "  - 桌面端没起来：网关没有可转发的上游",
+            "  - 口令不对，或者 gate.json 坏了：用下面第一条重设口令",
+            "  - 手机收到 403：allow_cidrs 填错了，被拒的地址在网关日志里点出来了"
+            "（当前生效的配置看 start.bat show）",
+            "可以整行复制后重试：",
+            f"  {hint('--set-password')}",
+            f"  {hint('--discover')}",
+        ],
+        "edit": [
+            "[什么都没写] 这次改配置没落盘：这些提问在保存之前就停了，"
+            "磁盘上还是原来那一份。",
+            "  常见原因：口令少于 8 位、对外监听端口不在 1024-65535 之内（上游端口另算，"
+            "1-65535）、或者从管道而不是真正的命令行窗口里运行。",
+            "可以整行复制后重试：",
+            f"  {hint('--edit')}",
+            f"  {hint('--show')}",
+        ],
+        "stop": [
+            "[还在监听] 配置的那个端口上仍有进程在听。上面几行点出了它的 PID：",
+            "  --stop 只动命令行里带 qp_gate 的那一个，认不出是自己的就故意留着不动。",
+            "可以整行复制后重试：",
+            f"  {hint('--stop')}",
+        ],
+        "noconfig": [
+            "[还没有配置] 这里没有 gate.json。",
+            "  先把不带参数的 start.bat 跑一次，它会引导你创建配置；"
+            "只想改配置不想开监听的话，看 README 里 --config 那种临时文件的用法。",
+        ],
+        "unknown": [
+            "上面那一个词不是本脚本认识的命令；下面这张表是它认识的词。",
+        ],
+        "discover": [
+            "[还没探到上游] 桌面上没有 QwenPaw 形状的服务在回环端口上听。",
+            "  先把桌面端起来，再重试这条。",
+        ],
+        "check": [
+            "[自检没过] 看上面那些行：FAIL 落在哪个小节，那个小节的末尾就把日志整段贴出来了。",
+        ],
+        "usage": [
+            "[qp-gate] 这个脚本认识的命令（打错了也会回到这张表）：",
+            "  start.bat                 起来并开始监听",
+            "  start.bat stop            停掉正在监听的那个网关",
+            "  start.bat config          改设置：登录、端口、放行的网段",
+            "  start.bat password        改手机登录的用户名和口令",
+            "  start.bat discover        打出网关探到的桌面端（上游）端口",
+            "  start.bat show            打出当前生效的配置，并逐条说明",
+            "  start.bat check           跑自检",
+            "  start.bat firewall        添加 Windows 入站放行规则（会弹 UAC）",
+            "  start.bat firewall-remove 删掉本工具添加的那条规则",
+        ],
+    }
+    if kind not in texts:
+        raise SystemExit(f"--explain 不认这个分支名: {kind}")
+    for line in texts[kind]:
+        print(line)
 
 
 def main(argv: list) -> int:
@@ -1272,9 +1423,15 @@ def main(argv: list) -> int:
     parser.add_argument("--remove-firewall", action="store_true",
                         help="删除本工具添加的防火墙规则")
     parser.add_argument("--port", type=int, help="覆盖对外监听端口")
+    parser.add_argument("--explain", metavar="分支",
+                        help="内部用：start.bat 的失败分支与那张命令表拿它说中文")
     args = parser.parse_args(argv)
 
     path = Path(args.config)
+    # 收尾提示要在配置读不了的时候也打得出来，所以排在任何 Config 之前。
+    if args.explain:
+        explain(args.explain)
+        return 0
     if args.init:
         config = init_config(path, args.force)
         gate_firewall(path, config.listen_port)

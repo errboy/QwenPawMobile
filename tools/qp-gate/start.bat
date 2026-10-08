@@ -17,11 +17,24 @@ rem argument, so they stay out of the process list and the shell history.
 rem
 rem ASCII-only on purpose: cmd mis-parses non-ASCII bytes inside a batch body,
 rem so every Chinese message comes from qp_gate.py instead (it writes the console
-rem through the Unicode API and is not affected by the active codepage).
+rem through the Unicode API and is not affected by the active codepage). The
+rem failure tails below are the one case where the message is needed after the
+rem Python already exited, so each of them calls "qp_gate.py --explain <branch>".
 setlocal
 cd /d "%~dp0"
 
+rem A Python the caller named beats the search below. The embedded build runs this
+rem tool fine - only standard library - and where someone put it is not something
+rem this script can guess, so the caller says it with PY instead. PY is probed like
+rem every other candidate: a PY pointing at a deleted python.exe falls through to
+rem the search rather than failing the run, and that fallback is announced. The
+rem value itself is never echoed: cmd expands %VAR% while it parses the echo line,
+rem so a path holding & would run as two commands.
+set "WANTED=%PY%"
 set "PY="
+if defined WANTED call :tryprobe %WANTED%
+if defined WANTED if not defined PY echo [qp-gate] your PY does not run, searching on its own instead.
+if defined PY goto havepy
 call :tryprobe py -3
 if defined PY goto havepy
 call :tryprobe python
@@ -32,6 +45,10 @@ call :tryprobe "%~dp0..\..\..\python-3.13.0-embed\python.exe"
 if defined PY goto havepy
 
 echo [qp-gate] Python 3 not found. Install 3.9+, or set PY to a python.exe path.
+echo [qp-gate] to point this at one you already have, in the same window:
+echo   set PY=C:\path\to\python.exe
+echo [qp-gate] an embedded build is enough. It is looked for under the name
+echo   python-3.13.0-embed inside this folder and one level above it.
 pause
 exit /b 1
 
@@ -40,10 +57,23 @@ rem Prove the version floor by parsing the real file with the interpreter just
 rem picked. `where python` alone cannot do this: the Microsoft Store stub answers
 rem to it, and the user then reads "the gate will not start" while every listed
 rem cause in :failed is about something else entirely.
-%PY% -c "import io; compile(io.open('qp_gate.py', encoding='utf-8').read(), 'qp_gate.py', 'exec')" >NUL 2>NUL
+rem
+rem The path is passed as an argument instead of being written into the -c string:
+rem a folder name holding \0 or \U would be a Python escape sequence there, and an
+rem apostrophe in a path would close its quote. And the file is looked for first,
+rem so "this interpreter cannot parse it" is only ever said about a file that is
+rem there - a half-copied tool folder used to hear that sentence about Python.
+if not exist "%~dp0qp_gate.py" goto missingfile
+%PY% -c "import io,sys; compile(io.open(sys.argv[1], encoding='utf-8').read(), sys.argv[1], 'exec')" "%~dp0qp_gate.py" >NUL 2>NUL
 if not errorlevel 1 goto pyok
 echo [qp-gate] picked interpreter cannot parse qp_gate.py. Need Python 3.9+.
 echo [qp-gate] picked: %PY%
+pause
+exit /b 1
+
+:missingfile
+echo [qp-gate] qp_gate.py is not beside this script. The two are one tool.
+echo [qp-gate] looked in: %~dp0
 pause
 exit /b 1
 
@@ -95,7 +125,7 @@ goto editfailed
 
 :discover
 %PY% qp_gate.py --discover
-if errorlevel 1 echo [qp-gate] no upstream yet: start the desktop app first, then retry.
+if errorlevel 1 %PY% qp_gate.py --explain=discover
 goto done
 
 :show
@@ -104,7 +134,7 @@ goto done
 
 :check
 %PY% selftest.py
-if errorlevel 1 echo [qp-gate] self test failed, see the lines above.
+if errorlevel 1 %PY% qp_gate.py --explain=check
 goto done
 
 :firewall
@@ -118,7 +148,7 @@ if not errorlevel 1 goto done
 goto failed
 
 :noconfig
-echo [qp-gate] gate.json is missing. Run start.bat with no argument once to create it.
+%PY% qp_gate.py --explain=noconfig
 pause
 exit /b 1
 
@@ -127,30 +157,21 @@ rem A refused edit is not a gate that failed to start: --edit and --set-password
 rem stop before saving, so the config on disk is exactly what it was. Telling the
 rem user about ports in use and a desktop that is not running sends them hunting
 rem for a fault that does not exist.
-echo [qp-gate] nothing was written - these prompts stop before saving.
-echo [qp-gate] usual causes: password shorter than 8 characters, a port out of range,
-echo   or running this from a pipe instead of a console window.
-echo Copy one whole line and retry:
-echo   %PY% "%~dp0qp_gate.py" --edit
-echo   %PY% "%~dp0qp_gate.py" --show
+%PY% qp_gate.py --explain=edit
 pause
 exit /b 1
 
 :unknown
-echo [qp-gate] unknown command: %~1
+rem The word itself is what the user typed, so it is echoed as-is; the
+rem sentence around it comes from qp_gate.py (ASCII-only body, see the head).
+echo %~1
+%PY% qp_gate.py --explain=unknown
 echo.
 
 :usage
-echo [qp-gate] commands (also: start.bat help):
-echo   start.bat                 start serving
-echo   start.bat stop            stop the gate that is listening
-echo   start.bat config          change the settings: login, ports, allowed subnets
-echo   start.bat password        change the phone login user and password
-echo   start.bat discover        print the upstream port the gate found
-echo   start.bat show            print the effective config with what each field means
-echo   start.bat check           run the self test
-echo   start.bat firewall        add the Windows inbound rule (UAC prompt)
-echo   start.bat firewall-remove delete the rule this tool added
+rem The command table is Chinese prose for the console, so it lives in qp_gate.py
+rem for the same reason the failure tails do (ASCII-only body, see the head).
+%PY% qp_gate.py --explain=usage
 goto done
 
 :done
@@ -158,15 +179,7 @@ endlocal
 exit /b 0
 
 :failed
-echo [qp-gate] the gate did not come up. Usual causes:
-echo   - port already in use: another gate is running, only one can hold it
-echo   - desktop app not started: the gate has nothing to forward to
-echo   - credentials wrong or gate.json damaged: run start.bat password
-echo   - 403 from the phone: wrong allow_cidrs, the gate log names the rejected IP
-echo     (run: start.bat show)
-echo Copy one whole line and retry:
-echo   %PY% "%~dp0qp_gate.py" --set-password
-echo   %PY% "%~dp0qp_gate.py" --discover
+%PY% qp_gate.py --explain=failed
 pause
 endlocal
 exit /b 1
@@ -175,10 +188,7 @@ exit /b 1
 rem A gate that is still listening is not a gate that was stopped. --stop only kills a
 rem process whose own command line names qp_gate, so a stranger holding the port is
 rem left running on purpose, and the lines above name the PID it refused.
-echo [qp-gate] something still listens on the configured port. Read the lines above:
-echo   a process --stop could not identify as the gate was left running on purpose.
-echo Copy one whole line and retry:
-echo   %PY% "%~dp0qp_gate.py" --stop
+%PY% qp_gate.py --explain=stop
 pause
 endlocal
 exit /b 1

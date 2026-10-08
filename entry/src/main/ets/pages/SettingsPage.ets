@@ -217,6 +217,15 @@ struct SettingsPage {
           Text(Copy.config_port_label)
             .fontSize(AppType.body)
             .fontColor(AppColor.text)
+          /**
+           * The caption rides in the row, right after the field, wherever it fits.
+           * The xs bucket is where it does not: at the largest system font the line
+           * measures ~107vp against a 192vp page, so beside a 120vp field it would
+           * take the field's width instead of its own, and the port read back as
+           * `6170` on the xs probe. There it gets a line above the table instead.
+           * Letting the field shrink to make room was the first attempt; it is what
+           * clipped that digit.
+           */
           Row({ space: AppSpace.sm }) {
             TextInput({ text: this.portText, placeholder: `${LanScan.DEFAULT_PORT}` })
               .type(InputType.Number)
@@ -230,14 +239,21 @@ struct SettingsPage {
               .onChange((v: string): void => {
                 this.portText = v;
               })
+            if (this.wBp !== Bp.xs) {
+              Text(Copy.config_port_default)
+                .fontSize(AppType.caption)
+                .fontColor(AppColor.text_tertiary)
+                .maxLines(1)
+            }
           }
           .width('100%')
-          /**
-           * All three caption lines get the page width. Beside the 120-wide field
-           * the hint had only ~64vp left on a narrow phone, which wrapped it to a
-           * ten-line column; measured on the xs bucket, so keep them out of the Row.
-           */
-          Text(Copy.config_port_default)
+          if (this.wBp === Bp.xs) {
+            Text(Copy.config_port_default)
+              .fontSize(AppType.caption)
+              .fontColor(AppColor.text_tertiary)
+              .width('100%')
+          }
+          Text(Copy.config_port_table)
             .fontSize(AppType.caption)
             .fontColor(AppColor.text_tertiary)
             .width('100%')
