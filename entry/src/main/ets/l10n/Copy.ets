@@ -15,7 +15,7 @@ export class Copy {
   static readonly password_field: string = '密码';
   static readonly password_placeholder: string = '可选';
   static readonly action_use_saved: string = '使用已保存的登录进入';
-  static readonly need_server_address: string = '请输入服务器地址，例如 http://192.168.1.100:8088';
+  static readonly need_server_address: string = '请输入服务器地址，例如 http://192.168.1.100:61700';
   static readonly connecting: string = '正在连接…';
   static readonly bad_credentials: string = '用户名或密码错误';
   static readonly account_locked: string = '尝试过于频繁，账号暂时锁定';
@@ -53,11 +53,18 @@ export class Copy {
   static readonly config_back: string = '‹ 返回登录';
   static readonly config_servers_label: string = '服务器地址列表';
   static readonly config_server_hint: string = '可只填 IP，端口留空则用下方扫描端口';
-  static readonly config_new_placeholder: string = '192.168.1.23 或 http://192.168.1.23:8088';
+  static readonly config_new_placeholder: string = '192.168.1.23 或 http://192.168.1.23:61700';
   static readonly config_add: string = '添加';
   static readonly config_delete: string = '删除';
   static readonly config_port_label: string = '端口';
-  static readonly config_port_hint: string = '扫描端口，默认 8088';
+  static readonly config_port_hint: string = '扫描端口，默认 61700（守门程序 qp-gate 的端口）';
+  /**
+   * One field, one value: this line names the only case that replaces the
+   * default. 61700 is the gate's own default (`tools/qp-gate/gate.example.json`),
+   * 8088 is the desktop console's, and a sweep only ever probes the one number
+   * typed here. docs/11 quotes both lines verbatim as node anchors.
+   */
+  static readonly config_port_direct: string = '只有不经过守门程序、直连桌面端时才改成 8088';
   static readonly config_credential_label: string = '登录凭据';
   static readonly config_credential_hint: string = '保存在本机，登录页直接使用';
   static readonly config_local_address: string = '手机本机地址: %s';

@@ -1,7 +1,7 @@
 /**
  * LAN discovery for the PC running QwenPaw.
  *
- * Typing 192.168.1.23:8088 on a phone is the single worst first-run experience
+ * Typing 192.168.1.23:61700 on a phone is the single worst first-run experience
  * this app has, and a wrong digit is indistinguishable from a dead server. So the
  * login page sweeps the phone's own /24 instead: one GET /api/auth/status per
  * address, in small batches, with a short timeout. A host answers only when it is
@@ -11,6 +11,7 @@
 import { connection } from '@kit.NetworkKit';
 import { AuthStatus } from '../model/Dtos';
 import { ApiPath } from '../core/Wire';
+import { DEFAULT_SCAN_PORT } from '../core/Prefs';
 import { RequestSpec, Transport } from './Transport';
 
 /** One probed address and what the probe learned. */
@@ -30,7 +31,7 @@ export type ScanProgress = (done: number, total: number, found: number) => void;
 const PRIVATE_PREFIXES: string[] = ['192.168.', '10.', '172.'];
 
 export class LanScan {
-  static readonly DEFAULT_PORT: number = 8088;
+  static readonly DEFAULT_PORT: number = DEFAULT_SCAN_PORT;
   /** One request per address, so a dead host costs a timeout, not a retry. */
   private static readonly BATCH: number = 16;
   private static readonly PROBE_MS: number = 1200;
@@ -158,7 +159,7 @@ export class LanScan {
   }
 
   /**
-   * 'http://10.0.2.2' + 8088 -> 'http://10.0.2.2:8088'. An explicit port stays
+   * 'http://10.0.2.2' + 61700 -> 'http://10.0.2.2:61700'. An explicit port stays
    * put, and so does https, where the default is 443 rather than the scan port.
    */
   static withPort(url: string, defaultPort: number): string {
@@ -170,7 +171,7 @@ export class LanScan {
 
   /**
    * Wrap an address the user configured as a probe target. A typed host without a
-   * port borrows the scan port, so '192.168.1.23' and 'http://192.168.1.23:8088'
+   * port borrows the scan port, so '192.168.1.23' and 'http://192.168.1.23:61700'
    * describe the same machine to the login list.
    */
   static targetOf(url: string, defaultPort: number): LanTarget {

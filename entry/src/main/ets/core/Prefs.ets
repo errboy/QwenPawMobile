@@ -103,8 +103,14 @@ function text(value: string | undefined | null): string {
   return value === undefined || value === null ? '' : value;
 }
 
-/** The port a fresh install sweeps; matches QwenPaw's own console default. */
-const DEFAULT_SCAN_PORT: number = 8088;
+/**
+ * The port a fresh install sweeps. It is qp-gate's own default listen port
+ * (`tools/qp-gate/gate.example.json`), not the desktop console's: a phone is
+ * only ever expected to reach the desktop through the gate, so the gate is what
+ * deserves to be the value nobody has to type. `LanScan.DEFAULT_PORT` reads this
+ * one number — a second literal here or there would be a drift waiting to happen.
+ */
+export const DEFAULT_SCAN_PORT: number = 61700;
 
 /**
  * Read back the saved address list. Anything that is not an array of non-empty
