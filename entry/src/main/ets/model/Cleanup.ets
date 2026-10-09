@@ -11,8 +11,12 @@
  * Putting them next to a cache sweep is how a 'clean up' tap loses a paragraph.
  */
 
-/** The five buckets the cache splits into, as the page names its rows. */
-export const CLEANUP_KINDS: string[] = ['video', 'audio', 'doc', 'record', 'other'];
+/**
+ * The six buckets the cache splits into, as the page names its rows. `longtext` is
+ * not a cache bucket — it is the phone's copy of a message too long for the model's
+ * window, which is why it is listed where a user can see it and say no to it.
+ */
+export const CLEANUP_KINDS: string[] = ['video', 'audio', 'doc', 'record', 'longtext', 'other'];
 
 /**
  * One local copy the cleanup page can list, tick and delete.
@@ -49,6 +53,8 @@ export class CleanupTally {
   docBytes: number = 0;
   recordFiles: number = 0;
   recordBytes: number = 0;
+  longtextFiles: number = 0;
+  longtextBytes: number = 0;
   otherFiles: number = 0;
   otherBytes: number = 0;
   choices: number = 0;
@@ -69,6 +75,9 @@ export class CleanupTally {
     } else if (kind === 'record') {
       this.recordFiles += 1;
       this.recordBytes += bytes;
+    } else if (kind === 'longtext') {
+      this.longtextFiles += 1;
+      this.longtextBytes += bytes;
     } else {
       this.otherFiles += 1;
       this.otherBytes += bytes;

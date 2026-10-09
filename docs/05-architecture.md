@@ -23,7 +23,7 @@ pages  ──►  ui  ──►  state  ──►  api  ──►  net  ──�
 | `polling` | 全 App 唯一的轮询器 | `GlobalPoller.ets`（`POLL_INTERVAL_MS = 10000`，:13） |
 | `theme` | 设计 token 与深色/字号跟随 | `Theme.ets`、`ThemeManager.ets` |
 | `l10n` | 文案集中，禁止页面内硬编码中文 | `Copy.ets` |
-| `media` | 预览字节取回与解码、沙箱缓存、播放、录音 | `MediaLoader.ets`、`MediaCache.ets`、`AudioPlayer.ets`、`VoiceNote.ets` |
+| `media` | 预览字节取回与解码、沙箱缓存、播放、录音、发出的长消息留一份全文 | `MediaLoader.ets`、`MediaCache.ets`、`AudioPlayer.ets`、`VoiceNote.ets`、`LongTextStore.ets` |
 | `ui` / `pages` | 纯渲染 + 事件，尽量薄 | `pages/Index.ets`（登录）、`HomePage`、`ChatPage`、`SettingsPage`、`CleanupPage` |
 
 ## 四条硬规则
@@ -87,6 +87,7 @@ Composer 发送
 | Preferences（`qwenpaw_store`，`core/Prefs.ets:14-32`） | 服务器地址列表、令牌、账号、会话偏好、主题、扫描端口、主页紧凑开关 | 设备级，登出不删登录配置 |
 | 内存 | 消息列表、run 状态、审批卡片 | 全量以服务端为准，重启后从 `/api/chats/{id}` 重载 |
 | 沙箱缓存（`cacheDir/media` 与 `cacheDir` 根上的 `voice-*.m4a`） | 播放过的字节与录的音 | 本机副本，清理页删的就是它；系统也可以回收 |
+| 沙箱文件（`filesDir/longtext/longtext-<毫秒时间戳>.txt`，`media/LongTextStore.ets`） | 自己打的、超模型窗口被折出去的那条消息的**全文** | 用户打的字不可重取，所以**不进 `cacheDir`**（系统回收会把唯一一份拿走）；只有清理页那一桶按名字删得掉它 |
 | 不存 | 桌面端全局配置 | 手机只读那些端点 |
 
 `key: auth_password` 是**明文**存在应用私有 Preferences 里的（`core/Prefs.ets:27,215`）。
@@ -154,24 +155,30 @@ Composer 发送
 
 主页那一行「清理」不直接删东西，它打开 `pages/CleanupPage.ets`
 （`pages/HomePage.ets:114`）。原因是这几类本机数据的**撤销代价差得很远**：缓存的片段
-重播一次就回来了，录的音发出去就不再手里有，会话偏好要重新一个个挑。所以先分六类
-列出来（`StoreHub.tally`，`state/StoreHub.ets:133`），空的那类不放复选框、只写明「没有可清的」，
+重播一次就回来了，录的音发出去就不再手里有，会话偏好要重新一个个挑。所以先分七类
+列出来（`StoreHub.tally`，`state/StoreHub.ets:141`），空的那类不放复选框、只写明「没有可清的」，
 勾选后还要过一层二次确认，确认文案里点名只列选中的类别（只选了类别里的几条时写
-「只删其中 N 个」），再落到 `StoreHub.runCleanup`（`state/StoreHub.ets:178`）。
+「只删其中 N 个」），再落到 `StoreHub.runCleanup`（`state/StoreHub.ets:190`）。
 
-六类是**读一遍沙箱**得出的（`MediaCache.files()`，`media/MediaCache.ets:173`），按容器
+前五桶是**读一遍沙箱**得出的（`MediaCache.files()`，`media/MediaCache.ets:173`），按容器
 后缀而不是 MIME 分桶：`cacheDir/media` 里的 `.mp4/.mov/…` 算看过的视频，`.m4a/.mp3/…`
 算听过的音频，`.pdf/.md/…` 算打开过的文档，落不进任何一组的进「其他缓存」；
 `cacheDir` 根上那些 `voice-*.m4a` 单列为「录的音」—— 它们不在 `media/` 里，早先的
 一页只数 `media/`，于是发出去也留着的录音在清理页上完全是隐形的。
 
+「发的长消息（全文副本）」**不在 `MediaCache` 里**，它来自另一个存储（`media/LongTextStore.ets`，
+存在哪、为什么不能住 `cacheDir` 见上面那张边界表）。`MediaCache` 那套按 ref 哈希寻址，
+也接不住这种名字。副本就叫 `longtext-<毫秒时间戳>.txt`，和发出去的那份**同名**，所以这一行
+天然带着能认的名字，不参与下一段那套原名恢复。它**只在这一页消失**：
+没有任何系统回收、也没有别处的删除入口。
+
 类别之内还能**逐条**收：类别行右侧的「▾ 逐条」把这一类的每一份副本摊开成一行。行上先是
 **名字**，下面一行才是 `大小 · 最近写入时间`。名字有两种来源：副本落盘用的是
 `digest(serverUrl|ref)` 加后缀，服务器那边的文件名不在盘上，这份映射当下只活在内存里 ——
-`StoreHub.cachedLabels`（`state/StoreHub.ets:148`）把每个开着 store 手里仍有引用的 ref
+`StoreHub.cachedLabels`（`state/StoreHub.ets:160`）把每个开着 store 手里仍有引用的 ref
 哈希回去、和设备列出的清单对上，对得上的显示**原名**；没有任何引用剩下的副本（包括**这次
 启动以来还没打开过的会话**留下的）拿不到原名，就显示它在设备上**本来就有的那个名字**
-（`CleanupPage.shownName`，`pages/CleanupPage.ets:331`）：缓存副本是 `<哈希>.<后缀>`，
+（`CleanupPage.shownName`，`pages/CleanupPage.ets:334`）：缓存副本是 `<哈希>.<后缀>`，
 录音是 `voice-<毫秒时间戳>.m4a`。两边都带容器后缀，所以每一行自己说得出是什么格式，不再
 有一整排「文档 / 音频」这种认不出也分不出的泛称；把那个会话打开一次，原名就回来了 ——
 名字是尽力而为的提示，不是一份会过期的侧车元数据。
@@ -194,7 +201,8 @@ Composer 发送
 「一组文件名 + 一个会话偏好开关」，类别复选框是**推导**出来的（本类的副本被全选时才亮），
 所以「全部」只是把同一组名字一次填满的快捷方式，不是第二种删除语义。旧的
 `MediaCache.clearKind()` 因此整条删掉了，留着它就有两条会在后缀上各自演化的路。
-删完的回执报的是**真的删掉了几个**（`StoreHub.runCleanup` 返回 `dropFiles` 的实数）：
+删完的回执报的是**真的删掉了几个**（`StoreHub.runCleanup` 返回两个存储的 `dropFiles`
+实数之和，`state/StoreHub.ets:202`）：
 系统在中间回收过的文件不算数，回执就不会虚报。
 
 四类数据**故意不在这一页**，各自的方向不同：
@@ -212,7 +220,7 @@ Composer 发送
 
 一个坑已经踩过，改这个页面时别再掉回去：类别行必须是 `@Component`
 （`ui/cleanup/CleanupRow.ets:13`）而不是带普通参数的 `@Builder`。计数是异步读回来的，
-`@Builder` 按值传参只渲染一次、之后不再跟随页面状态，六类会永远停在「没有可清的」。
+`@Builder` 按值传参只渲染一次、之后不再跟随页面状态，七类会永远停在「没有可清的」。
 只有组件的 `@Prop` 会跟着父级更新。逐条展开出来的副本行同理，是 `ui/cleanup/CleanupFileRow.ets`
 ——勾一下就要立刻反映到类别复选框和按钮上的计数，按值传参的 builder 做不到。
 
@@ -299,7 +307,7 @@ Authorization 头里，按三种去向分流：
 `Parts.localRef()`（`model/Parts.ets:176`）就是这一刀。
 
 视图层还有一条例外：带着文件的工具卡**不进**§158 那套连排折叠组，并且会把它所在的连排
-打断（`ChatPage.carriesAsset()`，`pages/ChatPage.ets:1465`）。合组是给"一排什么都没交付"
+打断（`ChatPage.carriesAsset()`，`pages/ChatPage.ets:1524`）。合组是给"一排什么都没交付"
 的卡省屏幕；交付本身被折进 `×N`，用户就又只剩文字了。
 
 同一处还管"找得到"：带文档的卡以**文件名当标题**（`Copy.chat_tool_delivery`），工具名退到
@@ -319,10 +327,10 @@ ref。不能图省事把名字塞进 `fileName`：`fileBlock` 的判据是 `file
 ## 引用：把一条历史消息送回输入框
 
 长按气泡 → `Bubble.quoteMenu()` 按这条消息实际有什么内容列出条目 → `ChatPage.quote()`
-（`pages/ChatPage.ets:1008`）分两条路：
+（`pages/ChatPage.ets:1070`）分两条路：
 
 - **文字**转成 markdown 引用块（每行前缀 `> `）。电脑端按引用渲染，模型读到的也是同
-  一份文本，不需要服务端为"引用"加任何字段。超过 600 字（`QUOTE_MAX`，按字计，因为
+  一份文本，不需要服务端为"引用"加任何字段。超过 600 字（`PREVIEW_MAX`，按字计，因为
   输入框装的就是字）时不再硬截：输入框里留一段**整行收尾**的预览 + 一行说明，全文作为
   `Attachment.text` 挂在托盘里，发送时直接编进 multipart 体成为一份 `.txt`。不落临时
   文件：文件要能从"引用那一刻"活到"按下发送"，而 `cacheDir` 在系统压力下会被回收，
@@ -335,6 +343,30 @@ ref。不能图省事把名字塞进 `fileName`：`fileBlock` 的判据是 `file
   `UploadApi.upload()` 见到 `ref` 非空就直接把它当上传结果返回，一个字节都不再搬 ——
   把剪贴簿里的 clip 拉回手机再传一遍，只会在服务端留下第二份同名文件。
 
+**自己打的那条超长消息走同一形状，但不落盘的那条规则反过来。** `send()` 把文字交给
+store 之前过 `foldLongText()`（`pages/ChatPage.ets:863`）：同一个
+`clipToLine(…, PREVIEW_MAX)` 的开头、同一份 `Attachment.text` 直传，文件名换成
+`longtext-<毫秒时间戳>.txt`。**预览两处都取 600**（屏幕对"留多少开头"只有一个口径），
+**触发线不同**：引用看输入框装不装得下，打字看模型窗口够不够（阈值怎么算的见
+[07](07-server-contract.md) §3.2，只写在那里）。
+
+**那行说明按"预览到底被截了没有"分两句**（`Copy.chat_quote_as_file` /
+`Copy.chat_fold_whole_as_file`）。判据是折完的预览和原文比字，不是拿长度去比 600：
+截了才说"上面只是开头"；模型窗口小到来回不足 600 字、屏上本来就是全文时，说的那句是
+"这段太长，电脑一次读不完"。整行收尾本身也可能切掉后半行，所以这两种情况都真实存在。
+
+折之前先 `LongTextStore.save()` 留一份全文，这是与引用**相反**的决定，理由是引用那一套
+前提在这里不成立：被引用的原文在电脑端，长按还能再取一次；而打过的那条一折，屏幕上那条
+气泡就**只剩这段预览**，全文只存在两处 —— 电脑端那份文件，和手机这一份副本。没有副本，
+"改一改重发"就无从可改。也正因为它是一份不可重取的文字，它住 `filesDir/longtext`
+而不是 `cacheDir`（`media/LongTextStore.ets`，见「清理」），并且只走清理页那一个删除口。
+
+已知边界，两条都还没实现，测试时别当 bug 报：
+- 草稿只存文字，那份副本不进草稿。带着折过的消息退出会话再回来，输入框里只有开头 600 字
+  （说明句按上面的规则剥掉了），再发送出去的就是这 600 字。
+- 气泡上没有"取回全文重发"的入口；此刻读这份全文只有清理页那一桶的「打开 ›」，
+  页内**只显示，不能一键复制**。
+
 `Attachment.mime` 在这里填 `image/*` 这类通配是安全的：`ChatApi.buildParts()` 只看前缀
 决定 part 类型，mime 本身从不上线。`data:` 开头的内联字节不可引用，那等于把整个文件
 塞进请求体，所以 `Bubble.quotable()` 把它挡掉。
@@ -345,7 +377,7 @@ ref。不能图省事把名字塞进 `fileName`：`fileBlock` 的判据是 `file
 ## 会话资产：查看、下载、转发、删掉本机副本
 
 服务端没有"本会话资产清单"这种端点，也不需要：转录本身就是清单。`ChatPage.collectAssets()`
-（`pages/ChatPage.ets:1101`）扫 `this.items` 的四类 ref，产出一张 `AssetRow` 视图
+（`pages/ChatPage.ets:1160`）扫 `this.items` 的四类 ref，产出一张 `AssetRow` 视图
 （`model/Asset.ets`）—— 它不是第二个存储，所以永远不会和屏幕上的气泡说法不一。
 表头的 `📁 N` 由 `countAssets()` 维护，那个函数**不碰文件系统**：它在每一帧流式回复后都会
 跑一遍；`statSync` 只发生在打开面板的那一刻。
@@ -400,7 +432,7 @@ ref。不能图省事把名字塞进 `fileName`：`fileBlock` 的判据是 `file
   表头读作「控制 / 会话 / 自动 / 后台 / 内置」，靠后的几组在手机上压根够不着 —— mock 的词表
   太短，模拟器上永远看不见这个形状。
 
-手机自己补进去的 loop 模式标成 `category='loop'`（`pages/ChatPage.ets:660`），
+手机自己补进去的 loop 模式标成 `category='loop'`（`pages/ChatPage.ets:684`），
 所以它总是排在注册表条目之后。
 
 一个 ArkUI 坑：`ForEach` 的 key 必须带上"这组有没有表头"（`ui/chat/Composer.ets`）。
@@ -419,7 +451,7 @@ ref。不能图省事把名字塞进 `fileName`：`fileBlock` 的判据是 `file
 `channels` 为空算不限渠道，否则要出现 `all` 或 `console`。菜单里只有**一行**「🧩 技能
 (电脑)」，点开是 `ui/chat/SkillPanel.ets`：一行一个技能，左边 `emoji + 名字`、右边写清点下去
 会得到的 `/名字`、下面两行简介。点一行只做一件事：把 `/名字` 写进输入框
-（`ChatPage.pickSkill()`，`pages/ChatPage.ets:249`），剩下的分发靠服务端那条 slash 回退。
+（`ChatPage.pickSkill()`，`pages/ChatPage.ets:270`），剩下的分发靠服务端那条 slash 回退。
 手机上**没有"启用技能"这个动作**，那是桌面端的全局配置。
 
 技能为什么是面板不是菜单里的若干行：一条 SDK 事实决定了 `bindMenu` 挂不了二级菜单
@@ -435,7 +467,7 @@ ref。不能图省事把名字塞进 `fileName`：`fileBlock` 的判据是 `file
 DTO 只声明 `key` / `name` / `description` / `enabled` / `transport`（工具那层再加
 `name` / `description` / `enabled`）；`url`、`headers`、`command`、`args`、`env`、`cwd`、
 `input_schema` 在 `model/Dtos.ets` 里连字段都不写，`api/ComposerApi.ets` 的 `mcpClients()`
-（`api/ComposerApi.ets:154`）与 `mcpTools()`（`api/ComposerApi.ets:176`）也只把上面那几个字段一个个挑出来，
+（`api/ComposerApi.ets:160`）与 `mcpTools()`（`api/ComposerApi.ets:182`）也只把上面那几个字段一个个挑出来，
 多一个都不读。
 理由很直白：那几个位置正是 bearer token 和 API key 的常见落点，而**手机屏幕是会被拍照的**。
 回归时 mock 故意在 `env`/`headers`/`url` 里塞了带 `FAKE-NEVER-RENDER` 字样的假凭据，

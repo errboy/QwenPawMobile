@@ -21,7 +21,7 @@
 | GET | `/files/preview` | 图片/文件预览 | `media/MediaLoader.ets` |
 | GET | `/workspace/commands/available` | `/` 快捷指令补全（`category` 决定面板分组） | `ComposerApi.ets:39` |
 | GET | `/loops`、`/loops/status?chat_id=` | loop 模式与当前状态 | `ComposerApi.ets:60,83` |
-| GET | `/models`、`/models/active?scope=effective` | 模型槽位与生效值 | `ComposerApi.ets:91,101` |
+| GET | `/models`、`/models/active?scope=effective` | 模型槽位与生效值（后者带上下文窗口，见 §3.2） | `ComposerApi.ets:91,101` |
 | GET | `/workspace/running-config`、`/settings/upload-limit` | 只读：显示桌面端当前默认、上传上限 | `ComposerApi.ets:117,126` |
 | GET | `/skills` | ＋ 菜单「🧩 技能 (电脑)」点开的面板（按 `enabled` + `channels` 过滤） | `ComposerApi.ets:138` |
 | GET | `/mcp`、`/mcp/tools/{key}` | 只读：电脑端挂了哪些 MCP 客户端、各自工具。**只取五个安全字段**，`url`/`headers`/`env`/`args` 不进 DTO 也不进日志 | `ComposerApi.ets:160,185` |
@@ -80,6 +80,24 @@ workspace manifest + 渠道算出来的（`runtime/builder.py` 调
 所以手机上任何"引用技能"的样式最终都得落成 `/名字` 这段文本 —— 换成 `skills:名字`
 之类的显示形式，服务端只会当成一句话。面板每行右边直接把 `/名字` 写出来，就是为了
 不让界面好看的程度决定线上格式。
+
+### 3.2 模型窗口读生效值，打字超长按它折
+
+`/models/active?scope=effective` 回的 `effective_max_input_length` 是**当前 LLM 槽位的
+上下文窗口，单位 token**，由服务端按生效槽位算出来（`providers.py:99-114` 的
+`_active_models_info` → `provider.get_context_size()`，字段声明在 `config.py:210`；
+槽位没定或提供方查不到时这个字段就是 `null`）。手机读它，不自己猜窗口有多大。
+
+一条**打字**发出去的消息超过 `窗口 ÷ 4` 字（`ChatPage.ets` 的 `LONGTEXT_SHARE`；1 字按
+1 token 保守折算，对中文是悲观读数，混了拉丁字母时富余更大）就不当纯文本发：屏幕上留
+一段**整行收尾**的预览 + 一句说明，全文随这条消息以 `longtext-<时间戳>.txt` 走
+`POST /console/upload` 那份 multipart（`UploadApi` 的内存直传分支，不在沙箱落临时文件）。
+形状与超长引用是同一条路，见 [05](05-architecture.md) 的「引用」一节；这里只说线上事实：
+服务端收到的是一份 `text/plain`，字节数等于原文的 UTF-8 长度。
+
+那个字段读不到时兜底 **8000 字**（`LONGTEXT_FALLBACK`），刻意压低：折早了全文照样到得了，
+只是多一枚附件；撑爆了没量过的窗口是这条消息直接失败。这条也是 `GET` —— 手机**不** `PUT`
+这份配置，`/models/active` 的写入权在桌面端（§1 那条只读规则）。
 
 ## 4. SSE 帧语义（最容易踩的地方）
 

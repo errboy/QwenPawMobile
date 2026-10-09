@@ -15,10 +15,11 @@ import { ComposerApi } from '../api/ComposerApi';
 import { UploadApi } from '../api/UploadApi';
 import { ApiClient } from '../net/ApiClient';
 import { ChatPreferences } from '../core/Prefs';
-import { CleanupPicks, CleanupTally } from '../model/Cleanup';
+import { CleanupFile, CleanupPicks, CleanupTally } from '../model/Cleanup';
 import { HttpTransport } from '../net/HttpTransport';
 import { Transport } from '../net/Transport';
 import { MediaLoader } from '../media/MediaLoader';
+import { LongTextStore } from '../media/LongTextStore';
 import { AudioPlayer } from '../media/AudioPlayer';
 import { Parts } from '../model/Parts';
 import { ChatRef } from '../model/Dtos';
@@ -36,6 +37,8 @@ export class StoreHub {
   readonly approvalApi: ApprovalApi;
   readonly uploadApi: UploadApi;
   readonly media: MediaLoader;
+  /** The phone's copies of messages that outgrew the model's window. */
+  readonly longText: LongTextStore;
   /** One speaker for the whole app, so two windows cannot play over each other. */
   readonly audio: AudioPlayer;
   readonly poller: GlobalPoller;
@@ -56,6 +59,7 @@ export class StoreHub {
     this.approvalApi = new ApprovalApi(this.client);
     this.uploadApi = new UploadApi(this.client);
     this.media = new MediaLoader(this.client);
+    this.longText = new LongTextStore();
     this.audio = new AudioPlayer();
     this.app = new AppStore(this.client, this.auth, this.agentApi, http);
     this.poller = new GlobalPoller(this.chatApi, this.approvalApi);
@@ -129,10 +133,18 @@ export class StoreHub {
    * against what the device listed. A copy nothing references any more — including
    * one whose chat has not been opened since the app started — keeps an empty
    * label, and the page then names it by the file it actually is on the device.
+   *
+   * The long text keeps are merged in beside the cache. They carry their real
+   * names already, so they need no label recovery — and they are not a cache, so
+   * only this page ever removes them.
    */
   async tally(ctx: common.Context): Promise<CleanupTally> {
     const out = new CleanupTally();
     const files = this.media.files();
+    for (const f of this.longText.files()) {
+      files.push(f);
+    }
+    files.sort((a: CleanupFile, b: CleanupFile): number => b.modified - a.modified);
     const labels = this.cachedLabels();
     for (const f of files) {
       const label = labels.get(f.name);
@@ -187,7 +199,7 @@ export class StoreHub {
     for (const f of picks.files) {
       names.push(f.name);
     }
-    let gone: number = this.media.dropFiles(names);
+    let gone: number = this.media.dropFiles(names) + this.longText.dropFiles(names);
     if (picks.choices) {
       await ChatPreferences.clearChoices(ctx);
       gone += 1;
@@ -223,6 +235,9 @@ export class StoreHub {
     // Video and audio play from the sandbox, so the cache needs a directory before
     // the first window can ask a clip to load.
     this.media.bind(ctx);
+    // Same for the long text keeps: a send that outgrew the model's window writes
+    // its copy the moment it is sent, and there has to be somewhere for it to go.
+    this.longText.bind(ctx);
     await this.app.restore(ctx);
     if (this.app.hasSavedSession()) {
       await this.app.refreshAgents();

@@ -141,6 +141,9 @@ struct CleanupPage {
     if (kind === 'record') {
       return Copy.cleanup_cat_record;
     }
+    if (kind === 'longtext') {
+      return Copy.cleanup_cat_longtext;
+    }
     return Copy.cleanup_cat_other;
   }
 
@@ -754,6 +757,22 @@ struct CleanupPage {
             }
           })
           this.fileList('record')
+          CleanupRow({
+            label: Copy.cleanup_cat_longtext,
+            detail: Copy.fill2(Copy.cleanup_media_detail, `${this.t.longtextFiles}`,
+              humanBytes(this.t.longtextBytes)),
+            available: this.t.longtextFiles > 0,
+            on: this.isOn('longtext'),
+            expandable: this.t.longtextFiles > 0,
+            open: this.isOpen('longtext'),
+            onPick: (on: boolean): void => {
+              this.setKind('longtext', on);
+            },
+            onToggle: (): void => {
+              this.toggleOpen('longtext');
+            }
+          })
+          this.fileList('longtext')
           CleanupRow({
             label: Copy.cleanup_cat_other,
             detail: Copy.fill2(Copy.cleanup_media_detail, `${this.t.otherFiles}`,

@@ -142,6 +142,8 @@ export class Copy {
   static readonly cleanup_cat_audio: string = '听过的音频';
   static readonly cleanup_cat_doc: string = '打开过的文档';
   static readonly cleanup_cat_record: string = '录的音（发出去也留着）';
+  /** Not a cache bucket: the phone's own copy of a message that outgrew the window. */
+  static readonly cleanup_cat_longtext: string = '发的长消息（全文副本）';
   static readonly cleanup_cat_other: string = '其他缓存';
   static readonly cleanup_cat_choices: string = '会话偏好（模型 / 审批 / loop / 发过的媒体）';
   static readonly cleanup_media_detail: string = '%s 个文件 · %s';
@@ -259,11 +261,20 @@ export class Copy {
   /** Tray chip prefix: the bytes are already on the server, so sending uploads nothing. */
   static readonly chat_quoted_prefix: string = '↩ %s';
   /**
-   * Trailing line when a quote hit QUOTE_MAX: %s is the file the whole message
-   * goes out as, %d its real length. The paste stays a preview because the
-   * transcript must still show what is being quoted; the file carries the rest.
+   * Trailing line when a quote or a typed message hit PREVIEW_MAX: %s is the file
+   * the whole message goes out as, %d its real length. The paste stays a preview
+   * because the transcript must still show what is being quoted, and the file
+   * carries the rest. Only true when something was actually cut away.
    */
   static readonly chat_quote_as_file: string = '（这段太长，上面只是开头；完整原文随这条消息以 %s 发出，共 %d 字）';
+  /**
+   * Same promise for a typed message whose whole text still fits in the preview,
+   * which happens whenever the server's limit is smaller than PREVIEW_MAX. Says
+   * nothing about openings because there is no opening — the text above is all of
+   * it, and the file is what the model can actually read. Built at send time only,
+   * so it never reaches the composer and needs no stripping rule.
+   */
+  static readonly chat_fold_whole_as_file: string = '（这段太长，电脑一次读不完；完整原文随这条消息以 %s 发出，共 %d 字）';
   /** Header entry point into this chat's asset list; %d is how many there are. */
   static readonly assets_entry: string = '📁 %d';
   static readonly assets_title: string = '本会话的文件与多媒体';

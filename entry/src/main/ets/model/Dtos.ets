@@ -313,9 +313,25 @@ export class ProviderInfo {
   require_api_key: boolean = true;
 }
 
-/** GET /models/active. Null active_llm means the agent has no configured slot. */
+/**
+ * GET /models/active. Null active_llm means the agent has no configured slot.
+ * effective_max_input_length is that slot's context window in tokens, computed by
+ * the same provider call that drives the desktop's own compaction trigger.
+ */
 export class ActiveModelsResponse {
   active_llm?: ModelSlot;
+  effective_max_input_length?: number;
+}
+
+/**
+ * What the agent would run with if the phone sent no override: the slot, and how
+ * large a message that slot can still swallow. Read-only — the desktop owns the
+ * figure and recomputes it whenever the slot or provider config changes.
+ */
+export class ActiveModel {
+  slot?: ModelSlot;
+  /** Tokens; 0 when the server sent no figure (an older desktop, or no slot). */
+  maxInputTokens: number = 0;
 }
 
 /** GET /settings/upload-limit. Absent means the server set no cap. */

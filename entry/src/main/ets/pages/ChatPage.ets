@@ -23,7 +23,7 @@ import { AssetRow } from '../model/Asset';
 import { Export } from '../media/Export';
 import { PickOutcome, UploadApi } from '../api/UploadApi';
 import { Choice, SelectorKey, SelectorSpec } from '../model/Choices';
-import { ApprovalInfo, ChatRef, ChatSpec, LoopModeInfo, MCPClientInfo, MCPToolInfo, ModelSlot, ProviderInfo, SkillSpec, SlashCommand } from '../model/Dtos';
+import { ActiveModel, ApprovalInfo, ChatRef, ChatSpec, LoopModeInfo, MCPClientInfo, MCPToolInfo, ProviderInfo, SkillSpec, SlashCommand } from '../model/Dtos';
 import { LoopModes } from '../model/LoopModes';
 import { ModelOption, Providers } from '../model/Providers';
 import { Parts } from '../model/Parts';
@@ -49,10 +49,26 @@ const DRAFT_SAVE_MS: number = 800;
 /** Index into the flattened model list, carried as the choice id. */
 const NO_MODEL_OVERRIDE: string = '';
 /**
- * A quote longer than this is pasted as a preview, in characters because that is
- * what the composer holds: the full message goes out as a text file beside it.
+ * How much of an over-long text stays on screen as its own opening lines, in
+ * characters because that is what the composer holds. The whole of it goes out
+ * beside the preview as a text file — for a quote the user reached into, and for a
+ * message they typed here.
  */
-const QUOTE_MAX: number = 600;
+const PREVIEW_MAX: number = 600;
+/**
+ * What share of the model's context window one typed message may take before it is
+ * folded into a preview plus a file. A quarter leaves the agent room to answer and
+ * the desktop room to compress. The desktop counts tokens and the composer counts
+ * characters, and a character is charged as a token: the pessimistic reading for
+ * Chinese, near enough for the Latin mixed into it.
+ */
+const LONGTEXT_SHARE: number = 4;
+/**
+ * Characters to fold past when the desktop named no window at all — an older server,
+ * or one with no slot yet. Deliberately low: a message folded early still arrives in
+ * full, while one that is too big for a window nobody measured can fail outright.
+ */
+const LONGTEXT_FALLBACK: number = 8000;
 /** What a bubble can hold, in the order the asset list shows them. */
 const ASSET_KINDS: string[] = [QuoteKind.IMAGE, QuoteKind.VIDEO, QuoteKind.AUDIO, QuoteKind.FILE];
 
@@ -152,6 +168,11 @@ struct ChatPage {
       no stored choice may be judged against it. */
   private loopsReady: boolean = false;
   private modelsReady: boolean = false;
+  /**
+   * Tokens the server's own active slot can take, read with the slot. 0 means the
+   * desktop never named a window, which is a different answer from a small one.
+   */
+  private maxInputTokens: number = 0;
 
   private hub(): StoreHub {
     return StoreHub.shared();
@@ -356,16 +377,19 @@ struct ChatPage {
       // Only a handler that ran to the end has proved the catalog arrived.
       this.modelsReady = true;
       this.alignModelPreference();
-      api.activeModel().then((slot: ModelSlot | undefined): void => {
-        this.serverModelName = Providers.displayName(this.models, slot);
+      api.activeModel().then((active: ActiveModel): void => {
+        this.serverModelName = Providers.displayName(this.models, active.slot);
+        this.maxInputTokens = active.maxInputTokens;
       }).catch((): void => {
         this.serverModelName = '';
+        this.maxInputTokens = 0;
       });
     }).catch((err: Object): void => {
       const f = Failure.from(err);
       Log.warn(`composer models failed http=${f.httpStatus} transport=${f.transportCode} ${f.message}`);
       this.models = [];
       this.serverModelName = '';
+      this.maxInputTokens = 0;
     });
   }
 
@@ -821,7 +845,50 @@ struct ChatPage {
     this.pending = [];
     // The draft dies with the send: the watcher's pending save must not revive it.
     this.flushDraft('');
-    store.send(this.ctx(), text, files);
+    store.send(this.ctx(), this.foldLongText(text, files), files);
+  }
+
+  /** How much typed text may go out as plain text on this server. */
+  private longTextLimit(): number {
+    return this.maxInputTokens > 0
+      ? Math.floor(this.maxInputTokens / LONGTEXT_SHARE) : LONGTEXT_FALLBACK;
+  }
+
+  /**
+   * A message bigger than the model's window goes out the way a long quote already
+   * does: its opening lines stay in the text, the whole of it travels as a text file
+   * beside them. The file is added to `files`, and the body that goes out is what is
+   * left to show. Shorter messages come back untouched.
+   */
+  private foldLongText(text: string, files: Attachment[]): string {
+    if (text.length <= this.longTextLimit()) {
+      return text;
+    }
+    const stamp = Date.now();
+    const name = `longtext-${stamp}.txt`;
+    // Kept on the phone first and sent either way: a copy that could not be written
+    // costs the chance to edit this text again, not the message itself.
+    this.hub().longText.save(name, text);
+    const a = new Attachment();
+    a.key = `longtext_${stamp}_${files.length}`;
+    a.name = name;
+    a.mime = UploadApi.mimeFromName(name);
+    a.text = text;
+    files.push(a);
+    const preview = ChatPage.clipToLine(text, PREVIEW_MAX);
+    // Whether the screen shows an opening or everything decides the sentence, not
+    // how the length compares to PREVIEW_MAX: a preview that lands on a line break
+    // can cut a message shorter than the cap.
+    const claim = preview === text
+      ? Copy.chat_fold_whole_as_file : Copy.chat_quote_as_file;
+    return `${preview}\n` + Copy.fillN2(claim, name, text.length);
+  }
+
+  /** Cut to `max` characters and land on a line break, so a preview never dangles. */
+  private static clipToLine(text: string, max: number): string {
+    const body = text.substring(0, max);
+    const nl = body.lastIndexOf('\n');
+    return nl > 0 ? body.substring(0, nl) : body;
   }
 
   private pick(source: string): void {
@@ -1007,16 +1074,8 @@ struct ChatPage {
    */
   private quote(m: UiMessage, kind: string): void {
     if (kind === QuoteKind.TEXT) {
-      const clipped = m.text.length > QUOTE_MAX;
-      let body = clipped ? m.text.substring(0, QUOTE_MAX) : m.text;
-      if (clipped) {
-        // Land the preview on a line break: a dangling half line on the last row
-        // read as the renderer breaking rather than as a quote that continues.
-        const nl = body.lastIndexOf('\n');
-        if (nl > 0) {
-          body = body.substring(0, nl);
-        }
-      }
+      const clipped = m.text.length > PREVIEW_MAX;
+      const body = clipped ? ChatPage.clipToLine(m.text, PREVIEW_MAX) : m.text;
       const lines = body.split('\n');
       const quoted: string[] = [];
       for (const line of lines) {

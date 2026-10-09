@@ -10,13 +10,13 @@
  */
 import { ApiClient } from '../net/ApiClient';
 import {
+  ActiveModel,
   ActiveModelsResponse,
   CommandListResponse,
   LoopModeInfo,
   LoopModeStatus,
   MCPClientInfo,
   MCPToolInfo,
-  ModelSlot,
   ProviderInfo,
   RunningConfigLevel,
   SkillSpec,
@@ -92,17 +92,23 @@ export class ComposerApi {
   }
 
   /**
-   * The slot the server would use if the phone sent no override. scope=effective
-   * resolves the agent from the X-Agent-Id header the client already sends.
+   * The slot the server would use if the phone sent no override, with the context
+   * window it carries. scope=effective resolves the agent from the X-Agent-Id
+   * header the client already sends. One read for both facts, because the desktop
+   * sends them as one document and a window that belonged to a slot the chip no
+   * longer shows would be worse than no window at all.
    */
-  async activeModel(): Promise<ModelSlot | undefined> {
+  async activeModel(): Promise<ActiveModel> {
     const raw = await this.client.get(`${ApiPath.MODELS_ACTIVE}?scope=effective`);
     const parsed = JSON.parse(raw) as ActiveModelsResponse;
+    const out = new ActiveModel();
     const slot = parsed === undefined ? undefined : parsed.active_llm;
-    if (slot === undefined || Parts.str(slot.provider_id).length === 0) {
-      return undefined;
+    if (slot !== undefined && Parts.str(slot.provider_id).length > 0) {
+      out.slot = slot;
     }
-    return slot;
+    const tokens = parsed === undefined ? undefined : parsed.effective_max_input_length;
+    out.maxInputTokens = typeof tokens === 'number' && tokens > 0 ? Math.floor(tokens) : 0;
+    return out;
   }
 
   /**
