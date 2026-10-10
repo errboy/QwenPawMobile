@@ -1,5 +1,7 @@
 # QwenPawMobile
 
+![QwenPawMobile：QwenPaw 桌面端的鸿蒙客户端](docs/images/readme-banner.png)
+
 专为QwenPaw 桌面端（win）开发的鸿蒙（HarmonyOS NEXT）版app：工作在局域网内，它是 QwenPaw 桌面端的延伸，非独立app。为提升QwenPaw的使用价值，特别优化和设计了很多实用的功能。
 
 > QwenPaw 的模型、工具执行与历史都在桌面端一侧。这个 App 不内嵌 agent 运行时，
@@ -24,6 +26,29 @@
 
 手机上的一切都是**只读或只写本地**：不改桌面端的配置、不申请存储权限、聊天历史永远在电脑那一侧。
 这些边界逐条写在 [SECURITY.md](SECURITY.md) 与 [docs/04](docs/04-desktop-cooperation.md)。
+
+## 手机上能做什么
+
+![主页按来源分组的会话列表、会话里排开的表格与影音、等你点的审批卡](docs/images/overview.png)
+
+界面示意 · 模拟器与测试数据，非真实账号
+
+## 界面细节
+
+**治理审批**
+
+![审批卡：拦下的高危调用、要执行什么、只有你能点](docs/images/detail-approval.png)
+
+**表格与工具卡**
+
+![气泡里的表格、成组折叠的工具卡、句子里的竖线](docs/images/detail-chat-markdown.png)
+
+**图 / 影 / 音在会话里直接预览**
+
+![图片铺进气泡、短片在气泡里播、语音点一下就播](docs/images/detail-media-preview.webp)
+
+其余界面（`＋` 菜单里的技能与 MCP、清理页、模型与 loop 选择器、深色态）没有配图，
+操作口径逐条写在 [docs/10 第 7 步](docs/10-deploy-and-use.md)。
 
 ## 要用它，电脑上得先跑起 `tools/qp-gate`
 
@@ -58,7 +83,7 @@ tools\qp-gate\start.bat stop
 Linux / macOS 没有 `.bat`：`python3 tools/qp-gate/qp_gate.py --init` 配置一次，之后
 `python3 tools/qp-gate/qp_gate.py` 启动、`--stop` 停；防火墙那一步它不代劳，自己放行 TCP `61700`。
 
-一步步带截图口径的装法在 [docs/10 §5](docs/10-deploy-and-use.md)，为什么非要这一层、
+一步步的装法在 [docs/10 §5](docs/10-deploy-and-use.md)（那篇是纯文字，没有配图），为什么非要这一层、
 另外两条路的取舍在 [docs/04](docs/04-desktop-cooperation.md)，子命令全表在
 `tools/qp-gate/README.md`（这个路径在开发树和发布树里位置不同，所以不给它做链接）。
 

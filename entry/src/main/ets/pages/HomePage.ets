@@ -495,16 +495,26 @@ struct HomePage {
   @Builder
   groupHeader(group: ChannelGroup) {
     Row({ space: AppSpace.xs }) {
+      // Only the label carries weight, so the count, the running chip and the
+      // toggle label are a fixed tail that can never be pushed past the row edge;
+      // at worst the label ellipsizes. This is what xs + "特大" needed: the tail
+      // used to ride off-screen (measured 400px label + 226px chip + toggle
+      // against 624px of content), which hid the very control that expands it.
       Text(this.groupTitle(group))
         .fontSize(AppType.body)
         .fontWeight(FontWeight.Bold)
         .fontColor(AppColor.text_secondary)
-      if (this.runningIn(group) > 0) {
+        .maxLines(1)
+        .textOverflow({ overflow: TextOverflow.Ellipsis })
+        .layoutWeight(1)
+      // The page-level banner above the list already counts every running session,
+      // and each expanded row says `进行中` on itself, so at xs this chip is the
+      // one fact the narrowest bucket can give up to keep the label readable.
+      if (this.runningIn(group) > 0 && this.wBp !== Bp.xs) {
         Text(Copy.fillN(Copy.home_group_running, this.runningIn(group)))
           .fontSize(AppType.caption)
           .fontColor(AppColor.success)
       }
-      Blank()
       Text(this.isExpanded(group.key) ? Copy.home_group_collapse : Copy.home_group_expand)
         .fontSize(AppType.caption)
         .fontColor(AppColor.text_tertiary)

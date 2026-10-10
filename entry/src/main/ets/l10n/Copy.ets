@@ -125,7 +125,6 @@ export class Copy {
   static readonly home_row_running: string = '进行中';
   /** Opens the three-way picker; the current mode is shown by its tick. */
   static readonly home_theme: string = '主题 ▾';
-  static readonly home_row_meta: string = '%s · %s';
   /** Local-only storage line: what this phone holds, never the server's record. */
   static readonly home_storage_line: string = '媒体缓存 %s · 未发送草稿 %d 条';
   static readonly home_storage_note: string = '聊天记录保存在电脑端，这里只清理手机上的副本';
@@ -184,6 +183,8 @@ export class Copy {
   static readonly chat_input_placeholder: string = '发消息…';
   static readonly chat_input_busy: string = '发送将打断当前生成…';
   static readonly chat_stop: string = '停止';
+  /** Floats over the transcript while the reader is parked in the history. */
+  static readonly chat_jump_latest: string = '↓ 回到最新';
   static readonly chat_send: string = '发送并插队';
   static readonly chat_send_idle: string = '发送';
   static readonly cancel: string = '取消';

@@ -41,8 +41,8 @@ ArkTS 比 TS 严：`any`/`unknown` 不允许，对象字面量要有形状，`st
 `state/ChatStore.ets:48` 存进 `PartTemplates.fileTemplate`，由 `Parts.label()` 在别处填）和上面那条
 嵌套的 `home_group_count`。静态分不出"由另一层填"和"忘了填"，留着就是每轮两条噪音 —— 与"反引号里的
 路径不进闸门"同一条理由，所以这一条边界也写在 §1 里。
-**它确实拦得住**：临时把 `home_row_meta` 从 `%s · %s` 改成 `%s · %s · %s`，那一处 `fill2` 调用点
-（`ui/home/SessionRow.ets:103`）立刻被报"模板三个、只填两个"，闸门 exit 1；改回去重新 0 problems。
+**它确实拦得住**：临时把 `cleanup_media_detail` 从 `%s 个文件 · %s` 改成 `%s 个文件 · %s · %s`，那六处
+`fill2` 调用点（例如 `pages/CleanupPage.ets:698`）立刻被报"模板三个、只填两个"，闸门 exit 6；改回去重新 0 problems。
 
 颜色也进了闸门，是因为上架测试报告直接点了名：Mate 80 上"控件序号[1]，控件类型[Button]，控件对比度为 1.27"，
 而要求写得很明白 —— 图标或标题文字与背景要大于 3:1，正文文字与背景要大于 4.5:1。那个 1.27 是**还没启用**的

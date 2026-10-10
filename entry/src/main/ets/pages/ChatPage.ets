@@ -159,6 +159,14 @@ struct ChatPage {
   private store: ChatStore | undefined = undefined;
   private pull: () => void = (): void => {};
   private scroller: Scroller = new Scroller();
+  /**
+   * The reader parked somewhere above the tail: flushes stop yanking the list down
+   * until they say otherwise. Set by a finger's own scroll, cleared when a scroll
+   * settles at the end, when the button is tapped, and when they send.
+   */
+  @State tailPaused: boolean = false;
+  /** A finger is on the transcript, so the next scroll is theirs, not ours. */
+  private grabbed: boolean = false;
   private lastCount: number = 0;
   private lastTailLength: number = 0;
   private lastMediaRev: number = 0;
@@ -792,6 +800,9 @@ struct ChatPage {
     this.lastCount = count;
     this.lastTailLength = tail;
     this.lastMediaRev = mediaRev;
+    if (this.tailPaused) {
+      return;
+    }
     // Scrolling in this frame measures the list as it was before the state
     // flush, so a freshly loaded history would jump back to the top.
     // A decoded image grows its bubble one layout pass later, so that jump has
@@ -843,6 +854,8 @@ struct ChatPage {
     const files = this.pending;
     this.inputText = '';
     this.pending = [];
+    // Their own message is not something they were reading past: it goes to the tail.
+    this.tailPaused = false;
     // The draft dies with the send: the watcher's pending save must not revive it.
     this.flushDraft('');
     store.send(this.ctx(), this.foldLongText(text, files), files);
@@ -1004,6 +1017,7 @@ struct ChatPage {
         }
         // Only the take travels. The typed draft and any other tray chip stay put:
         // a hold is a sentence spoken, not the whole composer submitted.
+        this.tailPaused = false;
         store.send(this.ctx(), '', [a]);
         return;
       }
@@ -1207,6 +1221,9 @@ struct ChatPage {
 
   private locateAsset(row: AssetRow): void {
     this.assetsOpen = false;
+    // A located card is a place the reader chose: a stream still yanking the list
+    // would take them back over their own jump one flush later.
+    this.tailPaused = row.index < this.items.length - 1;
     // The list has to lay out the panel's absence before an index means anything.
     setTimeout((): void => {
       this.scroller.scrollToIndex(row.index, true);
@@ -1763,27 +1780,67 @@ struct ChatPage {
           .fontColor(AppColor.text_secondary)
           .width(AppMeasure.text(this.wBp))
       } else {
-        // List.space takes number|string only, so the gap comes from item margins.
-        List({ scroller: this.scroller }) {
-          // The key carries the member count: a tool run grows in place while
-          // its first row keeps its key, and ArkUI reuses the old subtree
-          // without re-running the item generator for a repeated key.
-          ForEach(this.rows(), (row: ChatRow) => {
-            ListItem() {
-              this.toolRow(row)
+        // The jump-back chip floats over the transcript's own corner, so it costs
+        // the list no row of its own and cannot squeeze the composer.
+        Stack({ alignContent: Alignment.BottomEnd }) {
+          // List.space takes number|string only, so the gap comes from item margins.
+          List({ scroller: this.scroller }) {
+            // The key carries the member count: a tool run grows in place while
+            // its first row keeps its key, and ArkUI reuses the old subtree
+            // without re-running the item generator for a repeated key.
+            ForEach(this.rows(), (row: ChatRow) => {
+              ListItem() {
+                this.toolRow(row)
+              }
+              .margin({ bottom: AppSpace.xs })
+            }, (row: ChatRow): string => row.key + '#' + row.items.length)
+          }
+          .width('100%')
+          .height('100%')
+          .scrollBar(BarState.Off)
+          .edgeEffect(EdgeEffect.Spring)
+          .onAppear((): void => {
+            // A page pushed onto an already-loaded history has nothing to measure
+            // during its state flush; the tail jump belongs here.
+            this.stickTail(0);
+          })
+          .onTouch((event: TouchEvent): void => {
+            if (event.type === TouchType.Down) {
+              this.grabbed = true;
+            } else if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
+              this.grabbed = false;
             }
-            .margin({ bottom: AppSpace.xs })
-          }, (row: ChatRow): string => row.key + '#' + row.items.length)
+          })
+          .onScrollStart((): void => {
+            // Release the tail the moment their own drag begins: waiting for the
+            // gesture to end lets a streaming reply tug the list under the finger.
+            // Only a finger may create the pause, so a resize or our own jump that
+            // settles short of the end cannot strand the transcript mid-stream.
+            if (this.grabbed) {
+              this.tailPaused = true;
+            }
+          })
+          .onScrollStop((): void => {
+            // Coming to rest at the end is the reader saying they want the tail back.
+            if (this.scroller.isAtEnd()) {
+              this.tailPaused = false;
+            }
+          })
+
+          if (this.tailPaused) {
+            AppButton({
+              label: Copy.chat_jump_latest,
+              quiet: true,
+              onTap: (): void => {
+                this.tailPaused = false;
+                this.stickTail(0);
+              }
+            })
+              .margin({ right: AppSpace.sm, bottom: AppSpace.sm })
+          }
         }
         .width(AppMeasure.text(this.wBp))
         .layoutWeight(1)
-        .scrollBar(BarState.Off)
-        .edgeEffect(EdgeEffect.Spring)
-        .onAppear((): void => {
-          // A page pushed onto an already-loaded history has nothing to measure
-          // during its state flush; the tail jump belongs here.
-          this.stickTail(0);
-        })
       }
 
       ForEach(this.approvals, (approval: ApprovalInfo) => {

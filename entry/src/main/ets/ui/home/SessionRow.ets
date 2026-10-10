@@ -7,6 +7,7 @@
 import { AppColor, AppLine, AppRadius, AppSize, AppSpace, AppType } from '../../theme/Theme';
 import { ChatSpec } from '../../model/Dtos';
 import { ChatStatus } from '../../core/Wire';
+import { zoneStamp } from '../../core/Format';
 import { Copy } from '../../l10n/Copy';
 
 @Component
@@ -74,6 +75,10 @@ export struct SessionRow {
     return this.chat.status === ChatStatus.RUNNING;
   }
 
+  private stamp(): string {
+    return zoneStamp(this.chat.updated_at);
+  }
+
   build() {
     Column({ space: AppSpace.xxs }) {
       Row({ space: AppSpace.xs }) {
@@ -97,10 +102,18 @@ export struct SessionRow {
             .fontSize(AppType.caption)
             .fontColor(AppColor.success)
         }
+        // The window list sorts by this same value, so the row that reads newest
+        // is the newest. Names repeat — the desktop calls a fresh window '新会话'
+        // and every one of them keeps that name until it is renamed on the PC.
+        if (this.stamp().length > 0) {
+          Text(this.stamp())
+            .fontSize(AppType.caption)
+            .fontColor(AppColor.text_tertiary)
+        }
       }
       .width('100%')
 
-      Text(Copy.fill2(Copy.home_row_meta, this.chat.channel, this.chat.session_id))
+      Text(this.chat.channel)
         .fontSize(AppType.caption)
         .fontColor(AppColor.text_tertiary)
     }

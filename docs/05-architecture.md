@@ -307,7 +307,7 @@ Authorization 头里，按三种去向分流：
 `Parts.localRef()`（`model/Parts.ets:176`）就是这一刀。
 
 视图层还有一条例外：带着文件的工具卡**不进**§158 那套连排折叠组，并且会把它所在的连排
-打断（`ChatPage.carriesAsset()`，`pages/ChatPage.ets:1524`）。合组是给"一排什么都没交付"
+打断（`ChatPage.carriesAsset()`，`pages/ChatPage.ets:1541`）。合组是给"一排什么都没交付"
 的卡省屏幕；交付本身被折进 `×N`，用户就又只剩文字了。
 
 同一处还管"找得到"：带文档的卡以**文件名当标题**（`Copy.chat_tool_delivery`），工具名退到
@@ -344,7 +344,7 @@ ref。不能图省事把名字塞进 `fileName`：`fileBlock` 的判据是 `file
   把剪贴簿里的 clip 拉回手机再传一遍，只会在服务端留下第二份同名文件。
 
 **自己打的那条超长消息走同一形状，但不落盘的那条规则反过来。** `send()` 把文字交给
-store 之前过 `foldLongText()`（`pages/ChatPage.ets:863`）：同一个
+store 之前过 `foldLongText()`（`pages/ChatPage.ets:861`）：同一个
 `clipToLine(…, PREVIEW_MAX)` 的开头、同一份 `Attachment.text` 直传，文件名换成
 `longtext-<毫秒时间戳>.txt`。**预览两处都取 600**（屏幕对"留多少开头"只有一个口径），
 **触发线不同**：引用看输入框装不装得下，打字看模型窗口够不够（阈值怎么算的见
@@ -377,7 +377,7 @@ store 之前过 `foldLongText()`（`pages/ChatPage.ets:863`）：同一个
 ## 会话资产：查看、下载、转发、删掉本机副本
 
 服务端没有"本会话资产清单"这种端点，也不需要：转录本身就是清单。`ChatPage.collectAssets()`
-（`pages/ChatPage.ets:1160`）扫 `this.items` 的四类 ref，产出一张 `AssetRow` 视图
+（`pages/ChatPage.ets:1174`）扫 `this.items` 的四类 ref，产出一张 `AssetRow` 视图
 （`model/Asset.ets`）—— 它不是第二个存储，所以永远不会和屏幕上的气泡说法不一。
 表头的 `📁 N` 由 `countAssets()` 维护，那个函数**不碰文件系统**：它在每一帧流式回复后都会
 跑一遍；`statSync` 只发生在打开面板的那一刻。
@@ -432,7 +432,7 @@ store 之前过 `foldLongText()`（`pages/ChatPage.ets:863`）：同一个
   表头读作「控制 / 会话 / 自动 / 后台 / 内置」，靠后的几组在手机上压根够不着 —— mock 的词表
   太短，模拟器上永远看不见这个形状。
 
-手机自己补进去的 loop 模式标成 `category='loop'`（`pages/ChatPage.ets:684`），
+手机自己补进去的 loop 模式标成 `category='loop'`（`pages/ChatPage.ets:692`），
 所以它总是排在注册表条目之后。
 
 一个 ArkUI 坑：`ForEach` 的 key 必须带上"这组有没有表头"（`ui/chat/Composer.ets`）。
@@ -451,7 +451,7 @@ store 之前过 `foldLongText()`（`pages/ChatPage.ets:863`）：同一个
 `channels` 为空算不限渠道，否则要出现 `all` 或 `console`。菜单里只有**一行**「🧩 技能
 (电脑)」，点开是 `ui/chat/SkillPanel.ets`：一行一个技能，左边 `emoji + 名字`、右边写清点下去
 会得到的 `/名字`、下面两行简介。点一行只做一件事：把 `/名字` 写进输入框
-（`ChatPage.pickSkill()`，`pages/ChatPage.ets:270`），剩下的分发靠服务端那条 slash 回退。
+（`ChatPage.pickSkill()`，`pages/ChatPage.ets:278`），剩下的分发靠服务端那条 slash 回退。
 手机上**没有"启用技能"这个动作**，那是桌面端的全局配置。
 
 技能为什么是面板不是菜单里的若干行：一条 SDK 事实决定了 `bindMenu` 挂不了二级菜单
